@@ -1,0 +1,29 @@
+{
+  "name": "@omni/vscode",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "displayName": "Omni",
+  "description": "Omni agent — self-improving harness for open models, inside VS Code.",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["AI", "Programming Languages"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./src/extension.ts",
+  "contributes": {
+    "commands": [
+      { "command": "omni.run", "title": "Omni: Run task" },
+      { "command": "omni.sessions", "title": "Omni: Show sessions" }
+    ]
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@omni/server": "workspace:*"
+  },
+  "devDependencies": {
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
+  }
+}

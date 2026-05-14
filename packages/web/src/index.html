@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Omni</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d1117;
+      --fg: #c9d1d9;
+      --dim: #8b949e;
+      --accent: #58a6ff;
+      --user: #79c0ff;
+      --tool: #d2a8ff;
+      --error: #ff7b72;
+      --green: #56d364;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    #app { max-width: 880px; margin: 0 auto; padding: 16px; }
+    h1 { font-size: 14px; color: var(--accent); margin: 0 0 12px; }
+    #log {
+      min-height: 60vh;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      padding-bottom: 24px;
+    }
+    #log .user { color: var(--user); }
+    #log .assistant { color: var(--fg); }
+    #log .tool { color: var(--tool); }
+    #log .error { color: var(--error); }
+    #log .dim { color: var(--dim); }
+    #log .green { color: var(--green); }
+    form { display: flex; gap: 8px; position: sticky; bottom: 0; background: var(--bg); padding-top: 12px; }
+    input[type=text] {
+      flex: 1; padding: 8px; font: inherit; background: #161b22; color: var(--fg);
+      border: 1px solid #30363d; border-radius: 4px;
+    }
+    button {
+      padding: 8px 12px; font: inherit; background: var(--accent); color: var(--bg);
+      border: 0; border-radius: 4px; cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: default; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <h1>Omni — web</h1>
+    <div id="status" class="dim">connecting…</div>
+    <div id="log"></div>
+    <form id="form">
+      <input id="input" type="text" placeholder="say something" autocomplete="off" />
+      <button id="send" type="submit">send</button>
+    </form>
+  </div>
+  <script type="module" src="./client.ts"></script>
+</body>
+</html>

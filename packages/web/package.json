@@ -1,0 +1,21 @@
+{
+  "name": "@omni/web",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "bun run src/serve-dev.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@omni/server": "workspace:*"
+  },
+  "devDependencies": {
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
+  }
+}
