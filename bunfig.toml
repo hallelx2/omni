@@ -1,0 +1,6 @@
+[install]
+# Use exact versions for reproducibility
+exact = false
+
+[install.lockfile]
+save = true

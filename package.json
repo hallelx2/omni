@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "omni",
+  "description": "A self-improving agent harness for open models",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.2.21",
+  "scripts": {
+    "dev": "bun run --cwd packages/cli src/bin.ts",
+    "server": "bun run --cwd packages/server src/bin.ts",
+    "web": "bun run --cwd packages/web src/serve-dev.ts",
+    "typecheck": "bun run scripts/typecheck.ts",
+    "test": "bun test",
+    "test:ci": "bun test --reporter junit > test-results.xml || true"
+  },
+  "workspaces": {
+    "packages": [
+      "packages/*"
+    ],
+    "catalog": {
+      "@types/bun": "1.2.0",
+      "@types/node": "22.0.0",
+      "@tsconfig/bun": "1.0.9",
+      "typescript": "5.7.2",
+      "zod": "3.25.76",
+      "ulid": "2.3.0",
+      "ai": "4.0.0",
+      "@ai-sdk/openai": "1.0.0",
+      "@ai-sdk/openai-compatible": "0.1.0",
+      "@ai-sdk/anthropic": "1.0.0"
+    }
+  },
+  "devDependencies": {
+    "@tsconfig/bun": "1.0.9",
+    "@types/bun": "1.2.0",
+    "turbo": "2.3.0",
+    "typescript": "5.7.2"
+  }
+}
