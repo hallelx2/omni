@@ -1,17 +1,37 @@
-# Omni
+<div align="center">
 
-> A self-improving agent harness for open models.
+```
+ ██████╗ ███╗   ███╗███╗   ██╗██╗
+██╔═══██╗████╗ ████║████╗  ██║██║
+██║   ██║██╔████╔██║██╔██╗ ██║██║
+██║   ██║██║╚██╔╝██║██║╚██╗██║██║
+╚██████╔╝██║ ╚═╝ ██║██║ ╚████║██║
+ ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═══╝╚═╝
+```
 
-Omni gives **any** language model — frontier or open, big or small — a body
-to act through, a memory to learn from, and an evolving sense of how to use
-itself. It was built for the open-model wave (MiMo, Qwen, GLM, DeepSeek,
-Kimi, Llama via Ollama) but works just as well with Claude, GPT, and Gemini.
+### A self-improving agent harness for open models
 
-The thesis: weaker models become useful when the **harness around them is
-strong**. Instead of asking a 7B model to plan, execute, and reflect on its
-own, Omni layers in a planner, critic, and memory; probes the model on first
-contact; and adapts its prompts, tools, and loop strategy to fit. The result
-is an agent that punches above the model's weight class.
+*Brain, hands, and super legs for any LLM — frontier or local.*
+
+[![CI](https://github.com/hallelx2/omni/actions/workflows/ci.yml/badge.svg)](https://github.com/hallelx2/omni/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
+[![Bun](https://img.shields.io/badge/bun-1.2+-000000?logo=bun&logoColor=white)](https://bun.sh)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Tests](https://img.shields.io/badge/tests-305%20passing-brightgreen)](#status)
+[![Status](https://img.shields.io/badge/status-pre--alpha-orange)](#status)
+
+[**Quick start**](#-quick-start) •
+[**Docs**](./docs/architecture.md) •
+[**Authoring guides**](#-extending-omni) •
+[**Roadmap**](#-roadmap--honest-debt)
+
+</div>
+
+---
+
+Omni gives **any** language model — frontier or open, big or small — a body to act through, a memory to learn from, and an evolving sense of how to use itself. It was designed for the open-model wave (MiMo, Qwen, GLM, DeepSeek, Kimi, Llama via Ollama) and works just as well with Claude, GPT, and Gemini.
+
+The thesis is simple: **weaker models become useful when the harness around them is strong.** Instead of asking a 7B model to plan, execute, and reflect on its own, Omni layers in a planner, a critic, and a memory; probes the model on first contact; and adapts its prompts, tools, and loop strategy to fit. The result is an agent that punches above the model's weight class.
 
 ```
 ┌─ third brain ────────────┐   ┌─ hands ─────────────────┐   ┌─ super legs ────────────┐
@@ -33,51 +53,105 @@ is an agent that punches above the model's weight class.
    (readline)          (HTTP + WS)                  (browser)        (extension)
 ```
 
-## Status
+---
 
-| | |
-|---|---|
-| **Tests** | 305 passing across 40 files |
-| **Packages** | 11, all typecheck clean |
-| **Source** | ~7,500 lines of TypeScript |
-| **Models verified live** | MiMo-V2.5-Pro (full tool-use, reasoning_content roundtrip) |
-| **Surfaces working** | CLI, HTTP/WS server, web client |
-| **Surfaces scaffolded** | Desktop (Tauri plan), VS Code (extension plan) |
+## ✨ Why Omni
 
-## What's in the box
+Most agent frameworks assume a frontier model. Run them on a local 7B and they crumble — the model hallucinates tool names, drops formatting, goes in circles. The convenient answer is to wait for open models to catch up. Omni takes the other route:
 
-| Package | Purpose |
-|---|---|
-| `@omni/core` | Engine loop, types, context, permissions, validator, tokenizer, paths/config |
-| `@omni/adapters` | Model adapters via Vercel AI SDK 6: openai-compatible (MiMo, Ollama, OpenRouter…), Anthropic, OpenAI, Google + cost helper |
-| `@omni/tools` | `bash`, `read_file`, `write_file`, `edit`, `multi_edit`, `glob`, `grep`, `web_fetch`, MCP client (stdio + HTTP) |
-| `@omni/improve` | Planner, Critic, Memory, capability Probe (with cache), Adapt, FileTracer, score/replay traces, prompt-variant evolution |
-| `@omni/storage` | `bun:sqlite` with versioned migrations + 7 repositories (sessions, messages, events, audit, model profiles, prompt variants, settings) |
-| `@omni/cli` | Interactive terminal — slash commands, permission prompts, session persistence in `~/.omni/` |
-| `@omni/server` | HTTP + WebSocket server with WS-bridged permission requests |
-| `@omni/web` | Minimal browser client for the server |
-| `@omni/desktop` | Tauri shell scaffold |
-| `@omni/vscode` | VS Code extension scaffold |
-| `@omni/cli-driver` | Tiny smoke-test driver |
+> The model is interchangeable. The harness *is* the agent.
 
-## ~/.omni/ — your Omni home
+If the harness compensates intelligently for what the model can't do — by probing capabilities, choosing the right system prompt, decomposing tasks, criticising results, and learning across sessions — then a 7B running on your laptop can do real work.
 
-Per-user state lives at `~/.omni/`:
+---
+
+## 🎯 Features
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### 🧠 Third Brain
+- **Planner** decomposes user tasks before execution
+- **Critic** reviews assistant turns and tool results
+- **Memory** persists facts, preferences, and skills across sessions
+
+### ✋ Hands
+- `bash` (cross-platform: bash/pwsh, ANSI-stripped, 256KB cap)
+- `read_file`, `write_file` with size limits and slicing
+- `edit` (find/replace, ambiguity-safe) + `multi_edit` (atomic)
+- `glob` (Bun.Glob, mtime-sorted) + `grep` (rg-accelerated)
+- `web_fetch` (HTML→markdown via turndown)
+- **MCP client** for any Model Context Protocol server
+
+</td>
+<td width="50%" valign="top">
+
+### 🦵 Super Legs (self-improvement)
+- **Probe** classifies a model on first contact (~600 tokens)
+- **Adapt** picks system prompt, ReAct fallback, iteration budget
+- **Traces** persist every session as JSONL + SQLite
+- **Evolve** mutates prompt variants and ranks by trace fitness
+
+### 🔌 Surfaces
+- Interactive **CLI** (readline, slash commands, sessions)
+- **HTTP + WebSocket server** with permission forwarding
+- **Browser client** (minimal vanilla HTML/TS)
+- Scaffolds for **Tauri desktop** and **VS Code** extension
+
+</td>
+</tr>
+</table>
+
+### Engine guarantees
+
+True streaming • abort propagation through model + tools • loop detection by tool-call signature • bounded retries on retryable errors • parallel tool calls with interleaved event streams • session snapshot/restore preserving identity • cost tracking when per-1k rates are known • 22 discriminated `EngineEvent` variants — the only public observation channel.
+
+---
+
+## 🚀 Quick start
+
+```bash
+# 1. Clone
+git clone https://github.com/hallelx2/omni.git && cd omni
+bun install
+
+# 2. Run with the default mock adapter
+bun run dev
+
+# 3. Or point it at a real model (see provider matrix below)
+OMNI_ADAPTER=mimo MIMO_API_KEY=tp-... bun run dev
+```
+
+### Try every surface
+
+```bash
+bun run dev        # interactive CLI (this is the main experience)
+bun run server     # HTTP + WebSocket server on :8088
+bun run web        # browser client on :3000 (with embedded server)
+bun test           # 305 tests
+bun run typecheck  # all 11 packages
+```
+
+---
+
+## ⚙ Configuration: `~/.omni/`
+
+Omni keeps per-user state in `~/.omni/`:
 
 ```
 ~/.omni/
-  config.json     # default adapter, model, provider keys, UI prefs
-  db.sqlite       # sessions, messages, events, audit, profiles, variants, settings
-  traces/         # one JSONL file per session run
-  memory.json     # long-term memory entries
-  settings.json   # surface-specific settings (theme, etc.)
+├── config.json     # default adapter, model, provider keys, UI prefs
+├── db.sqlite       # sessions, messages, events, audit, profiles, variants
+├── traces/         # one JSONL file per session run
+├── memory.json     # long-term memory entries
+└── settings.json   # surface-specific settings (theme, etc.)
 ```
 
-Everything is overridable via env (`OMNI_HOME`, `OMNI_DB`, `OMNI_TRACES`,
-`OMNI_MEMORY`, `OMNI_CONFIG`). The CLI's `/paths` command shows what
-resolved.
+Every path is env-overridable (`OMNI_HOME`, `OMNI_DB`, `OMNI_TRACES`, `OMNI_MEMORY`, `OMNI_CONFIG`). The CLI's `/paths` command shows what resolved.
 
-### Example `~/.omni/config.json`
+<details>
+<summary><b>Example <code>~/.omni/config.json</code></b></summary>
 
 ```json
 {
@@ -101,122 +175,55 @@ resolved.
 }
 ```
 
-Precedence for every value: **explicit argument > env var > config file > built-in default**.
+</details>
 
-## Quick start
+**Precedence for every value:** explicit argument **>** env var **>** config file **>** built-in default.
 
-### 1. Install
+---
 
-```bash
-git clone <your-fork> omni && cd omni
-bun install
-```
-
-### 2. Configure a model
-
-Pick one of the four routes:
-
-**A. `~/.omni/config.json` (persistent, all surfaces)**
-
-```bash
-mkdir -p ~/.omni
-cat > ~/.omni/config.json <<EOF
-{
-  "adapter": "mimo",
-  "model": "mimo-v2.5-pro",
-  "providers": { "mimo": { "apiKey": "tp-...", "baseURL": "https://token-plan-sgp.xiaomimimo.com/v1" } }
-}
-EOF
-```
-
-**B. workspace `.env` (per-checkout, dev-friendly)**
-
-```bash
-cat > .env <<EOF
-MIMO_API_KEY=tp-...
-MIMO_BASE_URL=https://token-plan-sgp.xiaomimimo.com/v1
-OMNI_ADAPTER=mimo
-EOF
-```
-
-**C. shell env (one-off run)**
-
-```bash
-OMNI_ADAPTER=mimo MIMO_API_KEY=tp-... bun run dev
-```
-
-**D. local model with Ollama (no key needed)**
-
-```bash
-ollama pull qwen2.5-coder:7b
-OMNI_ADAPTER=ollama OMNI_MODEL=qwen2.5-coder:7b bun run dev
-```
-
-### 3. Run
-
-```bash
-bun run dev      # interactive CLI
-bun run server   # HTTP + WS server on :8088
-bun run web      # web client on :3000 (talks to embedded server)
-bun test         # 305 tests
-bun run typecheck  # all packages
-```
-
-### 4. Slash commands
-
-In the CLI:
-
-```
-/help        list commands
-/paths       show resolved ~/.omni/ paths
-/usage       cumulative token usage and cost
-/session     current session ID
-/model       active model
-/history     compact view of conversation so far
-/quit        exit
-```
-
-## Provider matrix
+## 🔌 Provider matrix
 
 | Adapter | Endpoint | Env var | Notes |
 |---|---|---|---|
-| `mimo` | `https://token-plan-sgp.xiaomimimo.com/v1` (configurable) | `MIMO_API_KEY` | Lower-case model ids: `mimo-v2.5-pro`, `mimo-v2.5`, `mimo-v2-flash`. Reasoning content auto-roundtripped. |
-| `mimo-anthropic` | `<base>/anthropic/v1` | `MIMO_API_KEY` | Same key, Anthropic protocol. |
-| `ollama` | `http://localhost:11434/v1` (configurable) | (none) | Any tag Ollama serves. |
-| `anthropic` | api.anthropic.com | `ANTHROPIC_API_KEY` | Extended thinking supported. |
-| `openai` | api.openai.com | `OPENAI_API_KEY` | gpt-4o, gpt-4o-mini, o1, o-series. |
-| `google` | generativelanguage.googleapis.com | `GOOGLE_API_KEY` | gemini-2.0-flash, 1.5-pro. |
-| `mock` | (none) | (none) | Scripted; for tests and offline dev. |
+| `mimo` | `https://token-plan-sgp.xiaomimimo.com/v1` | `MIMO_API_KEY` | Lowercase model ids (`mimo-v2.5-pro`); reasoning content auto-roundtripped |
+| `mimo-anthropic` | `<base>/anthropic/v1` | `MIMO_API_KEY` | Same key, Anthropic protocol |
+| `ollama` | `http://localhost:11434/v1` | *(none)* | Any tag Ollama serves locally |
+| `anthropic` | api.anthropic.com | `ANTHROPIC_API_KEY` | Extended thinking supported |
+| `openai` | api.openai.com | `OPENAI_API_KEY` | gpt-4o, gpt-4o-mini, o1, o-series |
+| `google` | generativelanguage.googleapis.com | `GOOGLE_API_KEY` | gemini-2.0-flash, 1.5-pro |
+| `mock` | *(none)* | *(none)* | Scripted; for tests and offline dev |
 
-## What "self-improving" means here
+All non-mock adapters go through **Vercel AI SDK 6**. Adding a new provider is roughly 80 lines — see [`docs/authoring-an-adapter.md`](./docs/authoring-an-adapter.md).
+
+---
+
+## 📚 Slash commands (in the CLI)
+
+```
+/help         list commands
+/paths        show resolved ~/.omni/ paths
+/usage        cumulative token usage and cost
+/session      current session ID
+/model        active model
+/history      compact view of conversation so far
+/quit         exit (also: /exit)
+```
+
+---
+
+## 🧪 What "self-improving" actually means
 
 Three concrete mechanisms, in increasing autonomy:
 
-1. **Adaptive prompts.** On first contact with a model, Omni runs `probeModel`
-   — a small battery of cheap prompts (~600 tokens) that classify the model
-   along axes like native-tool-calls, instruction-following, verbosity.
-   `adapt(profile)` returns a strategy: which system prompt, whether to
-   enable ReAct fallback, max iterations, output reserve. The result is
-   cached per model in `~/.omni/db.sqlite`.
+**1. Adaptive prompts.** On first contact with a model, Omni runs `probeModel` — a small battery of cheap prompts (~600 tokens) that classify the model along axes like *native tool calls?*, *instruction-following?*, *verbosity?*. `adapt(profile)` returns a strategy: which system prompt, whether to enable ReAct fallback, max iterations, output reserve. Results are cached per model in `~/.omni/db.sqlite`.
 
-2. **Session traces.** Every run writes a JSONL trace to `~/.omni/traces/`
-   plus a row per event to SQLite. `scoreTrace` ranks completed sessions
-   (model_done, low iteration count, no errors, diverse tool use).
-   `replayTrace` + `checkTrace` re-run a trace against invariants — useful
-   for regression-testing agent behavior.
+**2. Session traces.** Every run writes a JSONL trace to `~/.omni/traces/` plus rows to SQLite. `scoreTrace` ranks completed sessions (model_done, low iteration count, no errors, diverse tool use). `replayTrace` + `checkTrace` re-run a trace against invariants — regression testing for agent behavior.
 
-3. **Prompt evolution.** A pool of system-prompt variants is maintained.
-   `tournamentSelect` picks the best by mean trace score; `mutatePrompt`
-   produces a child variant by edit-operation; trials accumulate. Over
-   sessions, the prompts the model actually performs well with rise to the
-   top. The pieces are built and unit-tested; wiring an evolution loop into
-   the CLI is the next step.
+**3. Prompt evolution.** A pool of system-prompt variants is maintained in SQLite. `tournamentSelect` picks the best by mean trace score; `mutatePrompt` produces a child variant. Over sessions, the prompts that actually perform rise to the top. *Infrastructure built and tested; CLI driver wiring is the next sprint.*
 
-The first mechanism is wired and live. Mechanisms 2 and 3 have the
-infrastructure (tracer, repos, variant pool, scoring) but no autonomous
-driver yet — that's a near-term project.
+---
 
-## Architecture
+## 🏗 Architecture
 
 The engine is a closed-loop controller:
 
@@ -236,50 +243,143 @@ The engine is a closed-loop controller:
                             └──────────────────┘
 ```
 
-See [docs/architecture.md](./docs/architecture.md) for the event taxonomy
-(22 event types), lifecycle guarantees, and per-subsystem internals.
+See [docs/architecture.md](./docs/architecture.md) for the full event taxonomy (22 types), lifecycle guarantees, and per-subsystem internals.
 
-## Author guides
+---
 
-- [docs/authoring-a-tool.md](./docs/authoring-a-tool.md) — write a tool the
-  model can use (contract, validation, progress events, anti-patterns).
-- [docs/authoring-an-adapter.md](./docs/authoring-an-adapter.md) — plug in a
-  new model provider (Vercel AI SDK translation utilities, provider-specific
-  gotchas).
+## 📦 Packages
 
-## Why this exists
+| Package | Purpose |
+|---|---|
+| [`@omni/core`](./packages/core) | Engine loop, types, context, permissions, validator, tokenizer, paths/config |
+| [`@omni/adapters`](./packages/adapters) | Vercel AI SDK adapters — openai-compatible (MiMo, Ollama…), Anthropic, OpenAI, Google + cost helper |
+| [`@omni/tools`](./packages/tools) | `bash`, `read_file`, `write_file`, `edit`, `multi_edit`, `glob`, `grep`, `web_fetch`, MCP client |
+| [`@omni/improve`](./packages/improve) | Planner, Critic, Memory, Probe, Adapt, FileTracer, replay, prompt evolution |
+| [`@omni/storage`](./packages/storage) | `bun:sqlite` with versioned migrations + 7 repositories |
+| [`@omni/cli`](./packages/cli) | Interactive terminal — slash commands, permission prompts, session persistence |
+| [`@omni/server`](./packages/server) | HTTP + WebSocket server with WS-bridged permission requests |
+| [`@omni/web`](./packages/web) | Minimal browser client |
+| [`@omni/desktop`](./packages/desktop) | Tauri shell *(scaffold)* |
+| [`@omni/vscode`](./packages/vscode) | VS Code extension *(scaffold)* |
+| [`@omni/cli-driver`](./packages/cli-driver) | Smoke-test driver |
 
-Most agent frameworks assume frontier-grade models. The result is that they
-crumble on local 7B–14B opens models that don't follow instructions as
-crisply, hallucinate tool names, miss formatting, or stop responding
-mid-tool-call. Omni's bet: by **probing** what each model actually does,
-**adapting** the loop to compensate, and learning **across** sessions, a
-small open model running on your laptop can do real work.
+---
 
-There are also philosophical reasons. A harness is the **body** of an agent:
-it determines what the model can perceive (observation space), what it can
-do (action space), and what persists (state). Building one is the highest-
-leverage thing you can do to make a model useful — and the work is portable
-across whatever model comes next.
+## 🛠 Extending Omni
 
-## Status of each aspect (as of last commit)
+- **[Authoring a tool](./docs/authoring-a-tool.md)** — write a tool the model can use (contract, schemas, progress events, anti-patterns)
+- **[Authoring an adapter](./docs/authoring-an-adapter.md)** — plug in a new model provider (translation utilities, provider-specific gotchas)
+- **[Architecture](./docs/architecture.md)** — engine internals, event taxonomy, lifecycle
+- **API reference** — generated with `bun run --cwd packages/core docs` (TypeDoc)
 
-| Aspect | Done | Honest debt |
-|---|---|---|
-| 1. Core engine | ✅ streaming, abort, loops, retries, parallel calls, snapshot, tracer | engine.ts ~440 lines (could split); no property test for "aborted runs never emit tool.result" |
-| 2. Types & API | ✅ TSDoc, JSONSchema7, tiered exports, TypeDoc, 11 expect-type assertions | no `@internal` build-time enforcement |
-| 3. Adapters | ✅ 7 providers, reasoning roundtrip, cost compute, fake-fetch e2e | rate-limit retry untested live; Google adapter not run end-to-end |
-| 4. Tools | ✅ bash (ANSI-stripped), edit + multi_edit, glob, grep (rg-accelerated), web_fetch (markdown), MCP stdio + in-memory tested | no `apply_patch` (unified diff) tool; web_fetch turndown untested for complex layouts |
-| 5. Context | ✅ tiktoken, TokenBudgetStrategy, tool-result chunking, compaction events | no summarization-based compaction yet; no semantic recall |
-| 6. Permissions | ✅ 4 gate types, rule patterns, destructive predicate, audit log | no allowlist-default mode; no per-path bash restrictions |
-| 7. Third brain | ✅ Planner, Critic, Memory unit-tested | Memory uses keyword scan, no embeddings |
-| 8. Self-improvement | ✅ probe (cached), adapt, FileTracer, scoreTrace, replay + check, variant pool | not yet auto-wired into CLI flow |
-| 9. Storage | ✅ versioned migrations, 7 repos, FK cascades | no backup/restore command; forward-only migrations |
-| 10. CLI | ✅ interactive REPL, slash commands incl. `/paths`, sessions persisted | uses readline not opentui (deferred); slash args space-split (no quoted strings) |
-| 11. Surfaces | ✅ server WS with permission forwarding; web client | desktop/vscode are scaffolds; web uses window.confirm |
-| 12. Testing | ✅ typecheck script, CI workflow, replay + check, 4 property tests | no load test; no chaos/fuzz on adapter translation |
-| 13. Documentation | ✅ README, architecture, 2 author guides, .env.example | no `examples/` directory yet; no FAQ |
+A minimal tool looks like this:
 
-## License
+```ts
+import { z } from "zod"
+import type { Tool, ToolContext } from "@omni/core"
 
-MIT.
+export const shout: Tool<{ text: string }, { result: string }> = {
+  name: "shout",
+  description: "Return the input in upper case.",
+  permission: "auto",
+  schema: z.object({ text: z.string() }),
+  async execute(args, ctx: ToolContext) {
+    return { result: args.text.toUpperCase() }
+  },
+}
+```
+
+---
+
+## 📊 Status
+
+| | |
+|---|---|
+| **Tests** | 305 passing across 40 files |
+| **Packages** | 11, all typecheck clean |
+| **Source** | ~7,500 lines of TypeScript |
+| **Verified live** | MiMo-V2.5-Pro (full tool-use, reasoning_content roundtrip) |
+| **Working surfaces** | CLI, HTTP/WS server, web client |
+| **Scaffolded** | Desktop (Tauri plan), VS Code (extension plan) |
+
+---
+
+## 🗺 Roadmap & honest debt
+
+<details>
+<summary><b>What's solid (click to expand)</b></summary>
+
+| Aspect | Done |
+|---|---|
+| **1. Engine** | streaming, abort, loops, retries, parallel tools, snapshot, tracer hook, 4 fuzz-style property tests |
+| **2. Types & API** | TSDoc on every public symbol, JSONSchema7 for tool params, tiered exports, TypeDoc generates clean docs |
+| **3. Adapters** | 7 providers via Vercel AI SDK 6, reasoning_content roundtrip, cost computation, fake-fetch e2e tests |
+| **4. Tools** | 8 built-ins + MCP (in-memory + real stdio tested), cross-platform shell with ANSI strip, path safety |
+| **5. Context** | tiktoken tokenizer, TokenBudgetStrategy, tool-result chunking, `context.compacted` events |
+| **6. Permissions** | 4 gate types + audit + rule patterns + `looksDestructive` predicate |
+| **7. Third brain** | Planner, Critic, Memory all unit-tested |
+| **8. Self-improvement** | probe (cached), adapt, FileTracer, scoreTrace, replay + checkTrace, variant pool |
+| **9. Storage** | bun:sqlite, versioned migrations, 7 repos, FK cascades |
+| **10. CLI** | interactive REPL, slash commands, session/event persistence |
+| **11. Surfaces** | server WS with permission forwarding tested 3 ways; web client with permission UI |
+| **12. Testing** | typecheck script, CI workflow, trace replay, 4 property tests |
+| **13. Documentation** | architecture + 2 author guides + .env.example + TypeDoc |
+
+</details>
+
+<details>
+<summary><b>What's still imperfect (the honest list)</b></summary>
+
+- **Engine** — `engine.ts` is ~440 lines (could split executor); no property test proving aborted runs never emit `tool.result`
+- **Adapters** — rate-limit retry untested live; Google adapter not run end-to-end; Anthropic extended thinking not e2e-verified
+- **Tools** — no `apply_patch` (unified diff) tool yet; `grep` ripgrep path covered only when `rg` happens to be installed during the test run; `web_fetch` markdown untested for complex layouts
+- **Context** — no summarization-based compaction yet; no semantic recall; one tokenizer for all models (should be per-adapter)
+- **Permissions** — no allowlist-default mode; no per-path bash restrictions (e.g. bash allowed only within cwd)
+- **Third brain** — Memory uses linear-scan keyword recall, no embeddings
+- **Self-improvement** — probe/adapt/evolve are *built* but not yet *wired into* the CLI flow as the default loop
+- **Storage** — no backup/restore command; forward-only migrations
+- **CLI** — readline not Solid+opentui (deferred); slash arg parsing is space-split (no quoted strings); no `/sessions` continue command yet
+- **Surfaces** — desktop and vscode are scaffolds (architecture plans in their `index.ts`); web uses `window.confirm` for permissions
+- **Testing** — no load test; no chaos/fuzz on adapter translation layer
+- **Docs** — no `examples/` directory; no FAQ
+
+</details>
+
+---
+
+## 🤝 Contributing
+
+Issues and PRs welcome. The workflow is straightforward:
+
+```bash
+bun install
+bun test               # ensure baseline is green
+# ... make changes
+bun run typecheck      # all packages
+bun test
+```
+
+A few conventions: tools belong in `@omni/tools` and follow the `Tool<TArgs, TResult>` contract; new model providers belong in `@omni/adapters` and use the AI SDK translation helpers; never throw from a permission gate (return deny); every public symbol gets a TSDoc comment.
+
+---
+
+## 🙏 Acknowledgments
+
+Omni stands on the shoulders of:
+
+- [**Vercel AI SDK**](https://github.com/vercel/ai) — provider translation, streaming, tool calling
+- [**Bun**](https://bun.sh) — runtime, package manager, SQLite, test runner, all of it
+- [**opencode**](https://github.com/sst/opencode) — studied for monorepo structure and the `reasoning_content` roundtrip pattern
+- [**Model Context Protocol**](https://modelcontextprotocol.io) — the standard for extending agents with external tools
+- [**ripgrep**](https://github.com/BurntSushi/ripgrep) — accelerates `grep` when present
+- [**Xiaomi MiMo**](https://platform.xiaomimimo.com) — the model that proved this approach on a real open weights stack
+
+---
+
+## 📄 License
+
+[MIT](./LICENSE) © Halleluyah Oludele
+
+<div align="center">
+<sub>Built with care. Designed to outlast whatever model comes next.</sub>
+</div>
