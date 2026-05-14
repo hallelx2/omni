@@ -1,0 +1,30 @@
+{
+  "name": "@omni/core",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.entry.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "docs": "typedoc"
+  },
+  "dependencies": {
+    "@types/json-schema": "^7.0.15",
+    "js-tiktoken": "1",
+    "ulid": "catalog:",
+    "zod": "catalog:",
+    "zod-to-json-schema": "3.24.1"
+  },
+  "devDependencies": {
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "expect-type": "1.1.0",
+    "fast-check": "3.23.2",
+    "typedoc": "0.27.6",
+    "typedoc-plugin-markdown": "4.4.1",
+    "typescript": "catalog:"
+  }
+}
