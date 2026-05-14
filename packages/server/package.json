@@ -1,0 +1,27 @@
+{
+  "name": "@omni/server",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "start": "bun run src/bin.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@omni/core": "workspace:*",
+    "@omni/adapters": "workspace:*",
+    "@omni/tools": "workspace:*",
+    "@omni/storage": "workspace:*",
+    "@omni/cli": "workspace:*",
+    "ulid": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
+  }
+}
