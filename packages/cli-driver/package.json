@@ -1,0 +1,20 @@
+{
+  "name": "@omni/cli-driver",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@omni/core": "workspace:*",
+    "@omni/adapters": "workspace:*",
+    "@omni/tools": "workspace:*"
+  },
+  "devDependencies": {
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
+  }
+}
