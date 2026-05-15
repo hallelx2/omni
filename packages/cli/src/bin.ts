@@ -277,6 +277,7 @@ async function run() {
       profile: activeProfile,
       strategy: activeStrategy,
     })
+    let effectiveInput = input
     if (cmdResult) {
       if (cmdResult.kind === "exit") {
         exiting = true
@@ -284,14 +285,18 @@ async function run() {
       }
       if (cmdResult.kind === "message") {
         console.log(cmdResult.text)
+        rl.prompt()
+        continue
       }
-      rl.prompt()
-      continue
+      if (cmdResult.kind === "prompt") {
+        effectiveInput = cmdResult.text
+        console.log(ansi.dim(`[command rendered to ${effectiveInput.length} chars]`))
+      }
     }
 
     currentRun = new AbortController()
     try {
-      for await (const ev of engine.run(input, { signal: currentRun.signal })) {
+      for await (const ev of engine.run(effectiveInput, { signal: currentRun.signal })) {
         const out = renderEvent(ev)
         if (out) process.stdout.write(out)
         if (fileTracer) fileTracer.record(ev)
