@@ -1,5 +1,6 @@
 import type { Engine } from "@omni/core"
 import type { ModelProfile, AdaptedStrategy, Skill } from "@omni/improve"
+import type { MCPManager } from "@omni/tools"
 import { ansi } from "./ansi.ts"
 import {
   loadUserCommands,
@@ -16,6 +17,7 @@ export interface CommandContext {
   readonly skills?: Map<string, Skill>
   readonly activeSkill?: Skill | null
   readonly onSkillChange?: (skill: Skill | null) => void
+  readonly mcpManager?: MCPManager
 }
 
 export interface SlashCommand {
@@ -195,6 +197,134 @@ const COMMANDS: readonly SlashCommand[] = [
       lines.push(`${ansi.bold("Rationale")}`)
       for (const r of s.rationale) lines.push(`  ${ansi.dim("·")} ${r}`)
       return { kind: "message", text: lines.join("\n") }
+    },
+  },
+  {
+    name: "skills",
+    description: "List available skills",
+    async run(_args, ctx) {
+      const skills = ctx.skills
+      if (!skills || skills.size === 0) {
+        return {
+          kind: "message",
+          text: ansi.dim(
+            "No skills found. Create one with `mkdir -p ~/.omni/skills/<name> && $EDITOR ~/.omni/skills/<name>/SKILL.md`",
+          ),
+        }
+      }
+      const lines = [...skills.values()]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((s) => {
+          const active = ctx.activeSkill?.name === s.name ? ansi.green(" ●") : ""
+          const tools =
+            s.toolsOnly && s.toolsOnly.length > 0
+              ? ` ${ansi.dim(`(tools: ${s.toolsOnly.length})`)}`
+              : ""
+          const trig =
+            s.triggers.length > 0
+              ? `\n    ${ansi.dim("triggers:")} ${s.triggers.map((t) => `"${t}"`).join(", ")}`
+              : ""
+          return `  ${ansi.bold(s.name)}${active} ${ansi.dim("[" + s.source + "]")}${tools}\n    ${s.description}${trig}`
+        })
+      return { kind: "message", text: lines.join("\n\n") }
+    },
+  },
+  {
+    name: "skill",
+    description: "Activate a skill (`/skill <name>`, `/skill off` to clear, `/skill` to show current)",
+    async run(args, ctx) {
+      if (!ctx.skills || !ctx.onSkillChange) {
+        return { kind: "message", text: ansi.dim("(skills not initialized)") }
+      }
+      const name = parseArgs(args)[0]
+      if (!name) {
+        if (!ctx.activeSkill) {
+          return { kind: "message", text: ansi.dim("(no active skill)") }
+        }
+        return {
+          kind: "message",
+          text: `active: ${ansi.bold(ctx.activeSkill.name)} ${ansi.dim("[" + ctx.activeSkill.source + "]")}`,
+        }
+      }
+      if (name === "off" || name === "clear" || name === "none") {
+        ctx.onSkillChange(null)
+        return { kind: "message", text: ansi.dim("skill cleared") }
+      }
+      const skill = ctx.skills.get(name)
+      if (!skill) {
+        return {
+          kind: "message",
+          text: ansi.red(`unknown skill: ${name}. Try /skills to list available skills.`),
+        }
+      }
+      ctx.onSkillChange(skill)
+      return {
+        kind: "message",
+        text: `${ansi.green("→")} skill activated: ${ansi.bold(skill.name)}`,
+      }
+    },
+  },
+  {
+    name: "mcp",
+    description: "Manage MCP servers: /mcp (list), /mcp tools, /mcp restart <name>",
+    async run(args, ctx) {
+      const mgr = ctx.mcpManager
+      if (!mgr) {
+        return { kind: "message", text: ansi.dim("(MCP manager not initialized)") }
+      }
+      const [sub, ...rest] = parseArgs(args)
+      if (!sub) {
+        const states = mgr.status()
+        if (states.length === 0) {
+          return {
+            kind: "message",
+            text: ansi.dim(
+              "No MCP servers configured. Add servers under `mcp.servers` in ~/.omni/config.json.",
+            ),
+          }
+        }
+        const lines = states.map((s) => {
+          const color =
+            s.status === "connected"
+              ? ansi.green
+              : s.status === "failed"
+                ? ansi.red
+                : s.status === "connecting"
+                  ? ansi.yellow
+                  : ansi.dim
+          const detail =
+            s.status === "connected"
+              ? `${s.toolCount} tool${s.toolCount === 1 ? "" : "s"}`
+              : s.status === "failed"
+                ? s.error ?? ""
+                : s.status
+          return `  ${color("●")} ${s.name.padEnd(20)} ${ansi.dim(detail)}`
+        })
+        return { kind: "message", text: lines.join("\n") }
+      }
+      if (sub === "tools") {
+        const tools = mgr.tools()
+        if (tools.length === 0) {
+          return { kind: "message", text: ansi.dim("(no MCP tools currently registered)") }
+        }
+        const lines = tools.map(
+          (t) => `  ${ansi.cyan(t.name).padEnd(32)} ${ansi.dim(t.description.slice(0, 80))}`,
+        )
+        return { kind: "message", text: lines.join("\n") }
+      }
+      if (sub === "restart") {
+        const name = rest[0]
+        if (!name) {
+          return { kind: "message", text: ansi.red("usage: /mcp restart <name>") }
+        }
+        try {
+          await mgr.restart(name)
+          return { kind: "message", text: `${ansi.green("✓")} restarted ${name}` }
+        } catch (e) {
+          return { kind: "message", text: ansi.red(`failed: ${(e as Error).message}`) }
+        }
+      }
+      return { kind: "message", text: ansi.red(`unknown subcommand: ${sub}`) }
     },
   },
 ]

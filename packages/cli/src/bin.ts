@@ -48,7 +48,7 @@ import {
   OpenAIAdapter,
   GoogleAdapter,
 } from "@omni/adapters"
-import { bash, readFile, writeFile, edit, multiEdit, glob, grep, webFetch } from "@omni/tools"
+import { bash, readFile, writeFile, edit, multiEdit, glob, grep, webFetch, MCPManager } from "@omni/tools"
 import { Storage, SessionsRepo, MessagesRepo, EventsRepo, AuditRepo, ProfilesRepo } from "@omni/storage"
 import {
   FileTracer,
@@ -165,9 +165,23 @@ const events = new EventsRepo(store)
 const audit = new AuditRepo(store)
 const profiles = new ProfilesRepo(store)
 
+// ─── MCP servers (auto-connect from config) ───────────────────────────────
+const mcpManager = new MCPManager(config.mcp?.servers ?? {})
+await mcpManager.connectAll()
+for (const s of mcpManager.status()) {
+  if (s.status === "connected") {
+    console.log(ansi.dim(`mcp:${s.name} → connected (${s.toolCount} tool${s.toolCount === 1 ? "" : "s"})`))
+  } else if (s.status === "failed") {
+    console.log(ansi.red(`mcp:${s.name} → failed: ${s.error}`))
+  }
+}
+
 // ─── Engine setup ─────────────────────────────────────────────────────────
 const { adapter, name: modelName } = pickAdapter()
-const tools: readonly Tool[] = [bash, readFile, writeFile, edit, multiEdit, glob, grep, webFetch]
+const tools: readonly Tool[] = [
+  bash, readFile, writeFile, edit, multiEdit, glob, grep, webFetch,
+  ...mcpManager.tools(),
+]
 
 // ─── Probe + adapt (self-improvement layer wired into the CLI) ─────────────
 const profileCache = new SqliteProfileCache(profiles)
@@ -333,6 +347,7 @@ async function run() {
       skills,
       activeSkill,
       onSkillChange: applySkill,
+      mcpManager,
     })
     let effectiveInput = input
     if (cmdResult) {
@@ -382,6 +397,7 @@ function cleanup(): void {
   sessions.setStatus(engine.sessionId(), "completed")
   store.close()
   if (fileTracer) void fileTracer.flush()
+  void mcpManager.closeAll()
   rl.close()
 }
 

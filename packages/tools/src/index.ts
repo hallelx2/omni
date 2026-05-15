@@ -30,3 +30,6 @@ export type { WebFetchResult } from "./web_fetch.ts"
 
 export { MCPClient } from "./mcp.ts"
 export type { MCPClientConfig, StdioMCPConfig, HTTPMCPConfig } from "./mcp.ts"
+
+export { MCPManager } from "./mcp-manager.ts"
+export type { MCPServerState, MCPServerStatus } from "./mcp-manager.ts"
