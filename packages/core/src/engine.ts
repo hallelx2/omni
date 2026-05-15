@@ -20,6 +20,15 @@ import { combineSignals, mergeStreams, sleep } from "./util/streams.ts"
 import { AsyncQueue } from "./util/async-queue.ts"
 import { accumulateUsage, zeroUsage } from "./util/usage.ts"
 import { toolCallSetSignature } from "./util/signature.ts"
+import {
+  runPreToolUse,
+  runPostToolUse,
+  runPreModel,
+  runOnError,
+  runOnSessionStart,
+  runOnSessionEnd,
+  type HookModule,
+} from "./hooks.ts"
 
 /**
  * Configuration passed once at construction. Fields marked optional have
@@ -63,6 +72,12 @@ export interface EngineConfig {
    * it is disabled for the rest of the run and an `engine.warning` is emitted.
    */
   readonly tracer?: (event: EngineEvent) => void
+  /**
+   * Lifecycle hooks: pre/post tool use, pre-model, on error, session
+   * start/end. Hooks run in registration order; a thrown hook is swallowed
+   * and ignored for that call. See {@link HookModule}.
+   */
+  readonly hooks?: readonly HookModule[]
 }
 
 /** Options passed per-{@link Engine.run} call. */
@@ -123,6 +138,8 @@ export class Engine {
   private readonly _recentSignatures: string[] = []
   private readonly _createdAt = Date.now()
   private _updatedAt = this._createdAt
+  private readonly _hooks: readonly HookModule[]
+  private _sessionStartFired = false
 
   constructor(private readonly config: EngineConfig) {
     this._ctx = config.contextManager ?? new ContextManager()
@@ -134,6 +151,7 @@ export class Engine {
     this._cwd = config.cwd ?? process.cwd()
     this._env = config.env
     this._enableReActFallback = config.enableReActFallback ?? false
+    this._hooks = config.hooks ?? []
 
     if (config.systemPrompt) {
       this._ctx.append(makeMessage("system", config.systemPrompt))
@@ -218,6 +236,10 @@ export class Engine {
 
     try {
       yield { type: "engine.start", sessionId: this._sessionId, input }
+      if (!this._sessionStartFired) {
+        this._sessionStartFired = true
+        await runOnSessionStart(this._hooks, this._sessionId)
+      }
       if (opts.systemPromptPrefix) {
         this._ctx.append(makeMessage("system", opts.systemPromptPrefix))
       }
@@ -252,6 +274,11 @@ export class Engine {
             break outer
           }
           if (!turn.error.retryable || retries >= this._maxRetries) {
+            const handled = await runOnError(this._hooks, turn.error, { sessionId: this._sessionId })
+            if (handled) {
+              reason = "model_done"
+              break outer
+            }
             yield { type: "engine.error", error: turn.error, fatal: true }
             reason = "fatal_error"
             break outer
@@ -323,6 +350,7 @@ export class Engine {
         usage: this._cumulative,
         durationMs: Date.now() - startedAt,
       }
+      await runOnSessionEnd(this._hooks, this._sessionId, reason)
     } finally {
       cleanup()
     }
@@ -348,8 +376,9 @@ export class Engine {
       }
     }
 
+    const hookedMessages = await runPreModel(this._hooks, fit.messages)
     const params: CompleteParams = {
-      messages: fit.messages,
+      messages: hookedMessages,
       tools: toolSchemas,
       signal,
     }
@@ -468,9 +497,6 @@ export class Engine {
     }
     yield { type: "tool.permission_granted", call }
 
-    yield { type: "tool.start", call }
-    const startedAt = Date.now()
-
     const { signal: toolSignal, cleanup } = combineSignals(parentSignal)
     const queue = new AsyncQueue<EngineEvent>()
 
@@ -481,17 +507,40 @@ export class Engine {
       onProgress: (message: string) => queue.push({ type: "tool.progress", call, message }),
     }
 
+    // preToolUse hooks (run AFTER permission grant, BEFORE execute)
+    const preResult = await runPreToolUse(this._hooks, tool, call, toolCtx)
+    if (preResult?.continue === false) {
+      yield { type: "tool.permission_denied", call }
+      this._ctx.append(
+        makeToolMessage(call.id, `Error: blocked by hook${preResult.reason ? ` (${preResult.reason})` : ""}.`),
+      )
+      cleanup()
+      return
+    }
+    const effectiveCall = preResult?.args !== undefined ? { ...call, args: preResult.args } : call
+
+    yield { type: "tool.start", call: effectiveCall }
+    const startedAt = Date.now()
+
     // Run the tool concurrently; push the terminal event and close the queue.
     void (async () => {
       try {
-        const result = await tool.execute(validation.value, toolCtx)
+        const argsToUse =
+          preResult?.args !== undefined
+            ? (() => {
+                const re = tool.schema.safeParse(preResult.args)
+                return re.success ? re.data : validation.value
+              })()
+            : validation.value
+        const rawResult = await tool.execute(argsToUse, toolCtx)
+        const finalResult = await runPostToolUse(this._hooks, tool, effectiveCall, rawResult, toolCtx)
         const durationMs = Date.now() - startedAt
-        queue.push({ type: "tool.result", call, result, durationMs })
-        this._ctx.append(makeToolMessage(call.id, formatToolResult(result)))
+        queue.push({ type: "tool.result", call: effectiveCall, result: finalResult, durationMs })
+        this._ctx.append(makeToolMessage(call.id, formatToolResult(finalResult)))
       } catch (e) {
         const err = classifyError(e, { providerCode: "tool_failure" })
         const durationMs = Date.now() - startedAt
-        queue.push({ type: "tool.error", call, error: err, durationMs })
+        queue.push({ type: "tool.error", call: effectiveCall, error: err, durationMs })
         this._ctx.append(makeToolMessage(call.id, `Error: ${err.message}`))
       } finally {
         queue.close()

@@ -17,6 +17,23 @@ export { Engine } from "./engine.ts"
 export type { EngineConfig, RunOptions } from "./engine.ts"
 
 export {
+  runPreToolUse,
+  runPostToolUse,
+  runPreModel,
+  runOnError,
+  runOnSessionStart,
+  runOnSessionEnd,
+} from "./hooks.ts"
+export type {
+  HookModule,
+  HookEvent,
+  PreToolUseResult,
+  PostToolUseResult,
+  PreModelResult,
+  OnErrorResult,
+} from "./hooks.ts"
+
+export {
   AllowAllPermissions,
   DenyAllPermissions,
   StaticPermissions,

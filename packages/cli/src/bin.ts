@@ -62,6 +62,7 @@ import {
   type Skill,
 } from "@omni/improve"
 import { parseFrontmatter } from "./user-commands.ts"
+import { loadHooks } from "./hook-loader.ts"
 import { loadDotenv } from "./env.ts"
 import { confirm } from "./prompts.ts"
 import { renderEvent } from "./render.ts"
@@ -165,6 +166,12 @@ const events = new EventsRepo(store)
 const audit = new AuditRepo(store)
 const profiles = new ProfilesRepo(store)
 
+// ─── Hooks (shell + module) ────────────────────────────────────────────────
+const hooks = await loadHooks(config)
+if (hooks.length > 0) {
+  console.log(ansi.dim(`hooks: loaded ${hooks.length}`))
+}
+
 // ─── MCP servers (auto-connect from config) ───────────────────────────────
 const mcpManager = new MCPManager(config.mcp?.servers ?? {})
 await mcpManager.connectAll()
@@ -243,6 +250,7 @@ const engine = new Engine({
       data: event,
     })
   },
+  hooks,
 })
 
 sessions.create(engine.sessionId(), modelName)
