@@ -364,7 +364,7 @@ export class Engine {
   ): AsyncGenerator<EngineEvent, TurnResult, void> {
     yield { type: "model.start", modelId: this.config.model.id }
 
-    const fit = this._ctx.assemble({
+    const fit = await this._ctx.assemble({
       maxTokens: this.config.model.capabilities.contextWindow,
       reserveTokensForOutput: this.config.model.capabilities.maxOutputTokens ?? 4_096,
     })

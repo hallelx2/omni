@@ -1,4 +1,4 @@
-import type { Message } from "./types.ts"
+import type { Message, ModelAdapter } from "./types.ts"
 import type { Tokenizer } from "./tokenizer.ts"
 import { defaultTokenizer } from "./tokenizer.ts"
 
@@ -16,15 +16,23 @@ export interface FitResult {
   readonly dropped: number
   readonly tokensIn?: number
   readonly tokensOut?: number
+  /** True when the strategy summarised one or more dropped messages. */
+  readonly summarised?: boolean
 }
 
 /**
  * Pluggable strategy for fitting conversation history into a model's
- * context window. Implementations may drop oldest, summarize, or recall
+ * context window. Implementations may drop oldest, summarise, or recall
  * by relevance.
+ *
+ * `fit` may be sync (cheap drops) OR async (LLM-driven summarisation).
+ * The engine awaits whichever shape comes back.
  */
 export interface ContextStrategy {
-  fit(messages: readonly Message[], limits: ContextLimits): FitResult
+  fit(
+    messages: readonly Message[],
+    limits: ContextLimits,
+  ): FitResult | Promise<FitResult>
 }
 
 /**
@@ -52,11 +60,6 @@ export class SlidingWindowStrategy implements ContextStrategy {
  * Fit messages into a token budget. Always keeps system messages and the
  * most recent user/assistant/tool messages until the budget is met. When
  * messages are dropped, the engine emits a `context.compacted` event.
- *
- * @example
- * ```ts
- * new TokenBudgetStrategy(new TiktokenTokenizer(), { reserveTokensForOutput: 4096 })
- * ```
  */
 export class TokenBudgetStrategy implements ContextStrategy {
   constructor(
@@ -100,6 +103,121 @@ export class TokenBudgetStrategy implements ContextStrategy {
 }
 
 /**
+ * Async strategy that, when the conversation exceeds the budget, asks a
+ * model to summarise the oldest non-system messages into a single system
+ * note. The recent N messages pass through unchanged.
+ *
+ * Use this when conversations get long enough that dropping turns loses
+ * important context (a long debugging session where early discoveries
+ * inform later steps).
+ *
+ * Caveats:
+ *   - Uses a model call each time it fires. Pick a small/cheap summariser.
+ *   - The summary is appended as a *new* system message; the original
+ *     messages aren't mutated. (The engine sees the trimmed view returned
+ *     by `fit`; full history is still in storage.)
+ *   - On summariser failure (network, parse, etc.) falls back to the inner
+ *     strategy without erroring.
+ */
+export class SummarizingStrategy implements ContextStrategy {
+  constructor(
+    private readonly options: {
+      readonly summariser: ModelAdapter
+      /** Inner strategy that produces the final FitResult. Default: TokenBudgetStrategy. */
+      readonly inner?: ContextStrategy
+      /**
+       * How many recent non-system messages to ALWAYS pass through
+       * untouched. Default 8.
+       */
+      readonly keepRecent?: number
+      /** Token threshold above which summarisation runs. Default: 80% of budget. */
+      readonly summariseAboveTokens?: number
+      readonly tokenizer?: Tokenizer
+    },
+  ) {}
+
+  async fit(messages: readonly Message[], limits: ContextLimits): Promise<FitResult> {
+    const tokenizer = this.options.tokenizer ?? defaultTokenizer()
+    const inner = this.options.inner ?? new TokenBudgetStrategy(tokenizer)
+    const keepRecent = this.options.keepRecent ?? 8
+    const threshold =
+      this.options.summariseAboveTokens ?? Math.floor((limits.maxTokens ?? 32_000) * 0.8)
+
+    const total = tokenizer.countMessages(messages)
+    if (total <= threshold) {
+      const r = await inner.fit(messages, limits)
+      return r
+    }
+
+    const system = messages.filter((m) => m.role === "system")
+    const rest = messages.filter((m) => m.role !== "system")
+
+    if (rest.length <= keepRecent) {
+      const r = await inner.fit(messages, limits)
+      return r
+    }
+
+    const toSummarise = rest.slice(0, rest.length - keepRecent)
+    const recent = rest.slice(rest.length - keepRecent)
+
+    let summaryText: string
+    try {
+      summaryText = await this._summarise(toSummarise)
+    } catch {
+      // Summariser failure: fall back to plain budget fit, no surprises.
+      return await inner.fit(messages, limits)
+    }
+
+    const summaryMsg: Message = {
+      id: `summary-${Date.now()}`,
+      role: "system",
+      content:
+        "Summary of earlier turns (compacted to fit context):\n\n" + summaryText,
+      timestamp: Date.now(),
+    }
+    const newView: readonly Message[] = [...system, summaryMsg, ...recent]
+    const r = await inner.fit(newView, limits)
+    return { ...r, summarised: true, dropped: r.dropped + toSummarise.length }
+  }
+
+  private async _summarise(messages: readonly Message[]): Promise<string> {
+    const transcript = messages
+      .map((m) => `[${m.role}] ${m.content}${m.toolCalls ? ` (called ${m.toolCalls.length} tool(s))` : ""}`)
+      .join("\n")
+      .slice(0, 16_000) // hard cap on input to summariser
+
+    const promptMessages: readonly Message[] = [
+      {
+        id: "s-sys",
+        role: "system",
+        content:
+          "You compress agent conversation history. Output 4-8 bullet points capturing: the original task, key decisions made, files/locations referenced, and any unresolved sub-tasks. Be terse. No preamble.",
+        timestamp: Date.now(),
+      },
+      {
+        id: "s-user",
+        role: "user",
+        content: `Summarise this transcript:\n\n${transcript}`,
+        timestamp: Date.now(),
+      },
+    ]
+
+    const ac = new AbortController()
+    let text = ""
+    for await (const ev of this.options.summariser.complete({
+      messages: promptMessages,
+      tools: [],
+      signal: ac.signal,
+    })) {
+      if (ev.type === "delta") text += ev.text
+      else if (ev.type === "error") throw ev.error
+      else if (ev.type === "done") break
+    }
+    return text.trim()
+  }
+}
+
+/**
  * Append-only history store with a pluggable {@link ContextStrategy} to
  * produce the trimmed view passed to model calls.
  */
@@ -128,9 +246,13 @@ export class ContextManager {
     return this._history
   }
 
-  /** Trimmed view to send to the model, per the strategy. */
-  assemble(limits: ContextLimits = {}): FitResult {
-    return this.strategy.fit(this._history, limits)
+  /**
+   * Trimmed view to send to the model. Awaits async strategies; sync
+   * strategies (the default) resolve immediately.
+   */
+  async assemble(limits: ContextLimits = {}): Promise<FitResult> {
+    const r = await this.strategy.fit(this._history, limits)
+    return r
   }
 }
 

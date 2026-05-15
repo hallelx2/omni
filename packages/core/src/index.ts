@@ -58,6 +58,7 @@ export {
   ContextManager,
   SlidingWindowStrategy,
   TokenBudgetStrategy,
+  SummarizingStrategy,
   chunkToolResult,
   estimateTokens,
 } from "./context.ts"
