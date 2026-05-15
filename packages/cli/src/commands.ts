@@ -1,6 +1,12 @@
 import type { Engine } from "@omni/core"
 import type { ModelProfile, AdaptedStrategy } from "@omni/improve"
 import { ansi } from "./ansi.ts"
+import {
+  loadUserCommands,
+  parseArgs,
+  renderCommand,
+  type UserCommand,
+} from "./user-commands.ts"
 
 export interface CommandContext {
   readonly engine: Engine
@@ -19,19 +25,70 @@ export type CommandResult =
   | { readonly kind: "continue" }
   | { readonly kind: "exit" }
   | { readonly kind: "message"; readonly text: string }
+  /** Sent by user-defined commands: caller should run this through the engine. */
+  | { readonly kind: "prompt"; readonly text: string }
 
 const COMMANDS: readonly SlashCommand[] = [
   {
     name: "help",
     description: "List available commands",
     async run() {
-      const lines = COMMANDS.map(
+      const builtinLines = COMMANDS.map(
         (c) => `  ${ansi.cyan("/" + c.name).padEnd(28)} ${ansi.dim(c.description)}`,
       )
-      return {
-        kind: "message",
-        text: `${ansi.bold("Commands")}\n${lines.join("\n")}`,
+      const users = userCommands()
+      const userLines = [...users.values()]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map(
+          (c) =>
+            `  ${ansi.magenta("/" + c.name).padEnd(28)} ${ansi.dim(c.description || c.template.slice(0, 60))} ${ansi.dim("[" + c.source + "]")}`,
+        )
+      const out = [`${ansi.bold("Built-in commands")}`, ...builtinLines]
+      if (userLines.length > 0) {
+        out.push("", `${ansi.bold("User commands")}`, ...userLines)
       }
+      return { kind: "message", text: out.join("\n") }
+    },
+  },
+  {
+    name: "commands",
+    description: "List user-defined slash commands (alias for the user section of /help)",
+    async run() {
+      const users = userCommands()
+      if (users.size === 0) {
+        return {
+          kind: "message",
+          text: ansi.dim(
+            "No user commands. Create one with `mkdir -p ~/.omni/commands && $EDITOR ~/.omni/commands/foo.md`",
+          ),
+        }
+      }
+      const lines = [...users.values()]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((c) => {
+          const argsHint = c.args.length
+            ? " " +
+              c.args
+                .map((a) => (a.optional ? `[${a.name}]` : `<${a.name}>`))
+                .join(" ")
+            : ""
+          return [
+            `  ${ansi.bold("/" + c.name)}${argsHint}  ${ansi.dim("[" + c.source + "]")}`,
+            c.description ? `    ${c.description}` : "",
+            `    ${ansi.dim(c.path)}`,
+          ]
+            .filter(Boolean)
+            .join("\n")
+        })
+      return { kind: "message", text: lines.join("\n\n") }
+    },
+  },
+  {
+    name: "reload-commands",
+    description: "Re-scan ~/.omni/commands/ and workspace .omni/commands/",
+    async run() {
+      const cmds = reloadUserCommands()
+      return { kind: "message", text: `Loaded ${cmds.size} user command(s).` }
     },
   },
   {
@@ -139,22 +196,47 @@ const COMMANDS: readonly SlashCommand[] = [
   },
 ]
 
+/**
+ * Lazily-loaded user commands. Refresh by calling reloadUserCommands().
+ */
+let _userCommandCache: Map<string, UserCommand> | null = null
+export function userCommands(): Map<string, UserCommand> {
+  if (!_userCommandCache) _userCommandCache = loadUserCommands()
+  return _userCommandCache
+}
+export function reloadUserCommands(): Map<string, UserCommand> {
+  _userCommandCache = loadUserCommands()
+  return _userCommandCache
+}
+
 /** Parse and dispatch. Returns null if input wasn't a slash command. */
 export async function tryDispatchCommand(
   input: string,
   ctx: CommandContext,
 ): Promise<CommandResult | null> {
   if (!input.startsWith("/")) return null
-  const [name, ...rest] = input.slice(1).split(/\s+/)
-  const args = rest.join(" ")
-  const cmd = COMMANDS.find((c) => c.name === name)
-  if (!cmd) {
-    return {
-      kind: "message",
-      text: `Unknown command: /${name}. Try /help`,
-    }
+  // First token is the command name; everything after is parsed via parseArgs
+  // so quoted strings are respected.
+  const rest = input.slice(1)
+  const firstSpace = rest.search(/\s/)
+  const name = firstSpace === -1 ? rest : rest.slice(0, firstSpace)
+  const argString = firstSpace === -1 ? "" : rest.slice(firstSpace + 1)
+  const args = parseArgs(argString)
+
+  // Built-ins take precedence
+  const builtin = COMMANDS.find((c) => c.name === name)
+  if (builtin) return builtin.run(argString, ctx)
+
+  // User-defined commands
+  const user = userCommands().get(name)
+  if (user) {
+    return { kind: "prompt", text: renderCommand(user, args) }
   }
-  return cmd.run(args, ctx)
+
+  return {
+    kind: "message",
+    text: `Unknown command: /${name}. Try /help`,
+  }
 }
 
 export function listCommands(): readonly SlashCommand[] {
