@@ -16,6 +16,9 @@
 export { Engine } from "./engine.ts"
 export type { EngineConfig, RunOptions } from "./engine.ts"
 
+export { asSubagent } from "./subagent.ts"
+export type { SubagentConfig, SubagentResult } from "./subagent.ts"
+
 export {
   runPreToolUse,
   runPostToolUse,
