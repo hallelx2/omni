@@ -48,7 +48,7 @@ import {
   OpenAIAdapter,
   GoogleAdapter,
 } from "@omni/adapters"
-import { bash, readFile, writeFile, edit, multiEdit, glob, grep, webFetch, MCPManager } from "@omni/tools"
+import { bash, readFile, writeFile, edit, multiEdit, applyPatch, glob, grep, webFetch, MCPManager } from "@omni/tools"
 import { Storage, SessionsRepo, MessagesRepo, EventsRepo, AuditRepo, ProfilesRepo } from "@omni/storage"
 import {
   FileTracer,
@@ -186,7 +186,7 @@ for (const s of mcpManager.status()) {
 // ─── Engine setup ─────────────────────────────────────────────────────────
 const { adapter, name: modelName } = pickAdapter()
 const tools: readonly Tool[] = [
-  bash, readFile, writeFile, edit, multiEdit, glob, grep, webFetch,
+  bash, readFile, writeFile, edit, multiEdit, applyPatch, glob, grep, webFetch,
   ...mcpManager.tools(),
 ]
 
