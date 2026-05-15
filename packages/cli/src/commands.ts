@@ -1,9 +1,12 @@
 import type { Engine } from "@omni/core"
+import type { ModelProfile, AdaptedStrategy } from "@omni/improve"
 import { ansi } from "./ansi.ts"
 
 export interface CommandContext {
   readonly engine: Engine
   readonly modelName: string
+  readonly profile?: ModelProfile | null
+  readonly strategy?: AdaptedStrategy | null
 }
 
 export interface SlashCommand {
@@ -84,20 +87,54 @@ const COMMANDS: readonly SlashCommand[] = [
     name: "paths",
     description: "Show resolved Omni paths (home, db, traces, memory, config)",
     async run() {
-      // Lazy require to avoid circular imports at module load
-      const { omniPaths } = await import("@omni/core")
+      const { omniPaths, workspacePaths } = await import("@omni/core")
       const p = omniPaths()
-      return {
-        kind: "message",
-        text: [
-          `  home:     ${p.home}`,
-          `  config:   ${p.config}`,
-          `  db:       ${p.db}`,
-          `  traces:   ${p.traces}`,
-          `  memory:   ${p.memory}`,
-          `  settings: ${p.settings}`,
-        ].join("\n"),
+      const w = workspacePaths()
+      const lines = [
+        `  home:     ${p.home}`,
+        `  config:   ${p.config}`,
+        `  db:       ${p.db}`,
+        `  traces:   ${p.traces}`,
+        `  memory:   ${p.memory}`,
+        `  settings: ${p.settings}`,
+      ]
+      if (w) {
+        lines.push(``, `  workspace:`, `    home:     ${w.home}`, `    config:   ${w.config}`,
+          `    commands: ${w.commands}`, `    skills:   ${w.skills}`, `    hooks:    ${w.hooks}`)
+      } else {
+        lines.push(``, `  workspace: (none)`)
       }
+      return { kind: "message", text: lines.join("\n") }
+    },
+  },
+  {
+    name: "profile",
+    description: "Show the probed capability profile + adapted strategy for the current model",
+    async run(_args, ctx) {
+      if (!ctx.profile || !ctx.strategy) {
+        return { kind: "message", text: ansi.dim("(no profile — running on mock adapter or probe failed)") }
+      }
+      const p = ctx.profile
+      const s = ctx.strategy
+      const lines: string[] = []
+      lines.push(`${ansi.bold("Profile")} ${ansi.dim(`(${p.modelId})`)}`)
+      lines.push(`  probed:               ${new Date(p.probedAt).toISOString()}`)
+      lines.push(`  nativeToolCalls:      ${p.nativeToolCalls ? ansi.green("yes") : ansi.red("no")}`)
+      lines.push(`  followsInstructions:  ${p.followsInstructions ? ansi.green("yes") : ansi.red("no")}`)
+      lines.push(`  verboseByDefault:     ${p.verboseByDefault ? ansi.yellow("yes") : "no"}`)
+      lines.push(`  averageLatencyMs:     ${p.averageLatencyMs.toFixed(0)}`)
+      lines.push(`  errorRate:            ${(p.errorRate * 100).toFixed(0)}%`)
+      lines.push(``)
+      lines.push(`${ansi.bold("Strategy")}`)
+      lines.push(`  enableReActFallback:  ${s.enableReActFallback}`)
+      lines.push(`  maxIterations:        ${s.maxIterations}`)
+      lines.push(`  usePlanner:           ${s.usePlanner}`)
+      lines.push(`  useCritic:            ${s.useCritic}`)
+      lines.push(`  reserveOutputTokens:  ${s.reserveOutputTokens}`)
+      lines.push(``)
+      lines.push(`${ansi.bold("Rationale")}`)
+      for (const r of s.rationale) lines.push(`  ${ansi.dim("·")} ${r}`)
+      return { kind: "message", text: lines.join("\n") }
     },
   },
 ]

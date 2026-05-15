@@ -29,9 +29,10 @@ import {
   ContextManager,
   TiktokenTokenizer,
   AuditingPermissions,
-  loadConfig,
+  loadMergedConfig,
   ensureOmniHome,
   omniPaths,
+  workspacePaths,
   resolveApiKey,
   resolveBaseURL,
   type ModelAdapter,
@@ -48,8 +49,8 @@ import {
   GoogleAdapter,
 } from "@omni/adapters"
 import { bash, readFile, writeFile, edit, multiEdit, glob, grep, webFetch } from "@omni/tools"
-import { Storage, SessionsRepo, MessagesRepo, EventsRepo, AuditRepo } from "@omni/storage"
-import { FileTracer } from "@omni/improve"
+import { Storage, SessionsRepo, MessagesRepo, EventsRepo, AuditRepo, ProfilesRepo } from "@omni/storage"
+import { FileTracer, SqliteProfileCache, probeModelCached, adapt } from "@omni/improve"
 import { loadDotenv } from "./env.ts"
 import { confirm } from "./prompts.ts"
 import { renderEvent } from "./render.ts"
@@ -63,9 +64,10 @@ loadDotenv([resolve(workspaceRoot, ".env"), resolve(process.cwd(), ".env")])
 
 ensureOmniHome()
 const paths = omniPaths()
+const wsPaths = workspacePaths()
 const config: Config = (() => {
   try {
-    return loadConfig(paths.config)
+    return loadMergedConfig()
   } catch (e) {
     console.error(ansi.red(`config error: ${(e as Error).message}`))
     process.exit(2)
@@ -146,10 +148,27 @@ const sessions = new SessionsRepo(store)
 const _messages = new MessagesRepo(store)
 const events = new EventsRepo(store)
 const audit = new AuditRepo(store)
+const profiles = new ProfilesRepo(store)
 
 // ─── Engine setup ─────────────────────────────────────────────────────────
 const { adapter, name: modelName } = pickAdapter()
 const tools: readonly Tool[] = [bash, readFile, writeFile, edit, multiEdit, glob, grep, webFetch]
+
+// ─── Probe + adapt (self-improvement layer wired into the CLI) ─────────────
+const profileCache = new SqliteProfileCache(profiles)
+let activeProfile: Awaited<ReturnType<typeof probeModelCached>> | null = null
+let activeStrategy: ReturnType<typeof adapt> | null = null
+const isMockAdapter = modelName === "mock"
+if (!isMockAdapter) {
+  try {
+    activeProfile = await probeModelCached(adapter, profileCache, {
+      maxAgeMs: 24 * 60 * 60 * 1000, // 24h
+    })
+    activeStrategy = adapt(activeProfile)
+  } catch (e) {
+    console.error(ansi.dim(`probe skipped: ${(e as Error).message}`))
+  }
+}
 
 const askGate = new AskPermissions(async (tool, call) => {
   const argsPreview = truncate(JSON.stringify(call.args), 200)
@@ -170,17 +189,22 @@ const permissions = new AuditingPermissions(askGate, {
   },
 })
 
+const baseSystemPrompt =
+  config.systemPrompt ??
+  activeStrategy?.systemPrompt ??
+  "You are Omni, an autonomous coding agent. Use tools to gather information. Be terse. Do not narrate intent before tool use."
+
 const engine = new Engine({
   model: adapter,
   tools,
   permissions,
-  systemPrompt:
-    config.systemPrompt ??
-    "You are Omni, an autonomous coding agent. Use tools to gather information. Be terse. Do not narrate intent before tool use.",
-  maxIterations: config.maxIterations ?? 12,
-  enableReActFallback: config.enableReActFallback ?? true,
+  systemPrompt: baseSystemPrompt,
+  maxIterations: config.maxIterations ?? activeStrategy?.maxIterations ?? 12,
+  enableReActFallback: config.enableReActFallback ?? activeStrategy?.enableReActFallback ?? true,
   contextManager: new ContextManager(
-    new TokenBudgetStrategy(new TiktokenTokenizer(), { reserveTokensForOutput: 4_096 }),
+    new TokenBudgetStrategy(new TiktokenTokenizer(), {
+      reserveTokensForOutput: activeStrategy?.reserveOutputTokens ?? 4_096,
+    }),
   ),
   tracer: (event) => {
     events.append({
@@ -211,6 +235,15 @@ console.log(
   `${ansi.bold("Omni")} ${ansi.dim(`(${modelName}, ctx ${adapter.capabilities.contextWindow})`)}`,
 )
 console.log(ansi.dim(`home: ${paths.home}`))
+if (wsPaths) console.log(ansi.dim(`workspace: ${wsPaths.home}`))
+if (activeProfile && activeStrategy) {
+  const flags = [
+    activeProfile.nativeToolCalls ? "native-tools" : "react-fallback",
+    activeProfile.followsInstructions ? "follows" : "loose",
+    activeProfile.verboseByDefault ? "verbose" : "terse",
+  ].join(", ")
+  console.log(ansi.dim(`probed: ${flags}`))
+}
 console.log(ansi.dim("Type a message, or /help for commands, /quit to exit."))
 console.log()
 
@@ -238,7 +271,12 @@ async function run() {
       continue
     }
 
-    const cmdResult = await tryDispatchCommand(input, { engine, modelName })
+    const cmdResult = await tryDispatchCommand(input, {
+      engine,
+      modelName,
+      profile: activeProfile,
+      strategy: activeStrategy,
+    })
     if (cmdResult) {
       if (cmdResult.kind === "exit") {
         exiting = true

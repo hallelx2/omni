@@ -15,6 +15,9 @@
     "ulid": "catalog:",
     "zod": "catalog:"
   },
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "devDependencies": {
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",

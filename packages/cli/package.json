@@ -20,7 +20,8 @@
     "@omni/tools": "workspace:*",
     "@omni/storage": "workspace:*",
     "@omni/improve": "workspace:*",
-    "ulid": "catalog:"
+    "ulid": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@tsconfig/bun": "catalog:",

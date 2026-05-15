@@ -30,6 +30,8 @@ export type {
   ProbeCacheOptions,
 } from "./probe.ts"
 
+export { SqliteProfileCache } from "./sqlite-cache.ts"
+
 export { adapt } from "./adapt.ts"
 export type { AdaptedStrategy } from "./adapt.ts"
 
