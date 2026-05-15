@@ -19,6 +19,9 @@ export type { EditResult } from "./edit.ts"
 export { multiEdit } from "./multi_edit.ts"
 export type { MultiEditResult } from "./multi_edit.ts"
 
+export { applyPatch, parseUnifiedDiff } from "./apply_patch.ts"
+export type { ApplyPatchResult, ApplyPatchHunkResult } from "./apply_patch.ts"
+
 export { glob } from "./glob.ts"
 export type { GlobResult } from "./glob.ts"
 
