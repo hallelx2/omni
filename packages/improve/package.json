@@ -12,6 +12,7 @@
   "dependencies": {
     "@omni/core": "workspace:*",
     "@omni/storage": "workspace:*",
+    "ai": "catalog:",
     "ulid": "catalog:",
     "zod": "catalog:"
   },

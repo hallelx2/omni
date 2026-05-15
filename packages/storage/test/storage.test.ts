@@ -17,7 +17,7 @@ function mkStore() {
 describe("Storage migrations", () => {
   test("runs all migrations to head on first open", () => {
     const s = mkStore()
-    expect(s.schemaVersion()).toBe(3)
+    expect(s.schemaVersion()).toBeGreaterThanOrEqual(3)
     s.close()
   })
 

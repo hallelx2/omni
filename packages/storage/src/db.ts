@@ -76,6 +76,22 @@ export const MIGRATIONS: readonly string[] = [
       value TEXT NOT NULL
     );
   `,
+
+  // 4 — vector_memory for embedding-based recall
+  `
+    CREATE TABLE IF NOT EXISTS vector_memory (
+      id          TEXT PRIMARY KEY,
+      kind        TEXT NOT NULL,
+      text        TEXT NOT NULL,
+      tags_json   TEXT,
+      embedding   BLOB NOT NULL,  -- Float32Array bytes
+      dim         INTEGER NOT NULL,
+      source      TEXT,
+      created_at  INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_vector_memory_kind ON vector_memory(kind);
+    CREATE INDEX IF NOT EXISTS idx_vector_memory_created ON vector_memory(created_at);
+  `,
 ]
 
 /** Lightweight wrapper around bun:sqlite with versioned migrations. */

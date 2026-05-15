@@ -22,6 +22,14 @@ export type { Critique, CritiqueVerdict, CriticOptions } from "./critic.ts"
 export { Memory } from "./memory.ts"
 export type { MemoryEntry, MemoryKind } from "./memory.ts"
 
+export { VectorMemory } from "./vector-memory.ts"
+export type {
+  VectorMemoryConfig,
+  AddOptions as VectorAddOptions,
+  RecallOptions as VectorRecallOptions,
+  RecallHit as VectorRecallHit,
+} from "./vector-memory.ts"
+
 export { probeModel, probeModelCached, InMemoryProfileCache } from "./probe.ts"
 export type {
   ModelProfile,
