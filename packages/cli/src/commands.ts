@@ -1,6 +1,7 @@
 import type { Engine } from "@omni/core"
 import type { ModelProfile, AdaptedStrategy, Skill } from "@omni/improve"
 import type { MCPManager } from "@omni/tools"
+import type { SessionsRepo, MessagesRepo } from "@omni/storage"
 import { ansi } from "./ansi.ts"
 import {
   loadUserCommands,
@@ -18,6 +19,9 @@ export interface CommandContext {
   readonly activeSkill?: Skill | null
   readonly onSkillChange?: (skill: Skill | null) => void
   readonly mcpManager?: MCPManager
+  readonly sessionsRepo?: SessionsRepo
+  readonly messagesRepo?: MessagesRepo
+  readonly onContinueSession?: (sessionId: string) => boolean
 }
 
 export interface SlashCommand {
@@ -136,6 +140,56 @@ const COMMANDS: readonly SlashCommand[] = [
     description: "Show current sessionId",
     async run(_args, ctx) {
       return { kind: "message", text: `sessionId: ${ctx.engine.sessionId()}` }
+    },
+  },
+  {
+    name: "sessions",
+    description: "List recent sessions persisted in ~/.omni/db.sqlite",
+    async run(args, ctx) {
+      if (!ctx.sessionsRepo || !ctx.messagesRepo) {
+        return { kind: "message", text: ansi.dim("(sessions repo not initialized)") }
+      }
+      const limit = parseInt(parseArgs(args)[0] ?? "20", 10) || 20
+      const rows = ctx.sessionsRepo.list({ limit })
+      if (rows.length === 0) {
+        return { kind: "message", text: ansi.dim("(no sessions yet)") }
+      }
+      const lines = rows.map((r) => {
+        const when = new Date(r.updated_at).toISOString().slice(0, 19).replace("T", " ")
+        const msgs = ctx.messagesRepo!.countBySession(r.id)
+        const color =
+          r.status === "completed" ? ansi.green :
+          r.status === "active"    ? ansi.cyan  :
+          r.status === "failed"    ? ansi.red   : ansi.dim
+        const active = r.id === ctx.engine.sessionId() ? ansi.bold(" ←current") : ""
+        return `  ${color("●")} ${r.id} ${ansi.dim(when)} ${ansi.dim(`(${r.model_id}, ${msgs} msgs, ${r.status})`)}${active}`
+      })
+      lines.push("", ansi.dim("`/continue <id>` to resume one"))
+      return { kind: "message", text: lines.join("\n") }
+    },
+  },
+  {
+    name: "continue",
+    description: "Resume a past session by id (use `/sessions` to find ids)",
+    async run(args, ctx) {
+      if (!ctx.onContinueSession) {
+        return { kind: "message", text: ansi.dim("(continuation not wired up)") }
+      }
+      const id = parseArgs(args)[0]
+      if (!id) {
+        return { kind: "message", text: ansi.red("usage: /continue <sessionId>") }
+      }
+      const ok = ctx.onContinueSession(id)
+      if (!ok) {
+        return {
+          kind: "message",
+          text: ansi.red(`session ${id} not found`),
+        }
+      }
+      return {
+        kind: "message",
+        text: `${ansi.green("→")} resumed session ${ansi.bold(id)}`,
+      }
     },
   },
   {

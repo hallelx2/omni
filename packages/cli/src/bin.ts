@@ -255,6 +255,32 @@ const engine = new Engine({
 
 sessions.create(engine.sessionId(), modelName)
 
+// ─── Session continuation ──────────────────────────────────────────────────
+function continueSession(id: string): boolean {
+  const row = sessions.get(id)
+  if (!row) return false
+  const history = _messages.bySession(id)
+  if (history.length === 0) return false
+  const snapshot = {
+    sessionId: id,
+    messages: history.map((m) => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      toolCalls: m.tool_calls?.map((c) => ({ id: c.id, name: c.name, args: c.args })),
+      toolCallId: m.tool_call_id,
+      metadata: m.metadata,
+      timestamp: m.timestamp,
+    })),
+    usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, callCount: 0 },
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+  engine.restore(snapshot)
+  sessions.setStatus(id, "active")
+  return true
+}
+
 // ─── Skills ────────────────────────────────────────────────────────────────
 const skills = loadSkills()
 let activeSkill: Skill | null = null
@@ -356,6 +382,9 @@ async function run() {
       activeSkill,
       onSkillChange: applySkill,
       mcpManager,
+      sessionsRepo: sessions,
+      messagesRepo: _messages,
+      onContinueSession: continueSession,
     })
     let effectiveInput = input
     if (cmdResult) {
