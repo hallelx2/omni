@@ -32,6 +32,14 @@ export type {
 
 export { SqliteProfileCache } from "./sqlite-cache.ts"
 
+export {
+  loadSkills,
+  findMatchingSkill,
+  filterToolsBySkill,
+  setFrontmatterParser,
+} from "./skills.ts"
+export type { Skill } from "./skills.ts"
+
 export { adapt } from "./adapt.ts"
 export type { AdaptedStrategy } from "./adapt.ts"
 

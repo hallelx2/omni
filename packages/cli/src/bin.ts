@@ -50,7 +50,18 @@ import {
 } from "@omni/adapters"
 import { bash, readFile, writeFile, edit, multiEdit, glob, grep, webFetch } from "@omni/tools"
 import { Storage, SessionsRepo, MessagesRepo, EventsRepo, AuditRepo, ProfilesRepo } from "@omni/storage"
-import { FileTracer, SqliteProfileCache, probeModelCached, adapt } from "@omni/improve"
+import {
+  FileTracer,
+  SqliteProfileCache,
+  probeModelCached,
+  adapt,
+  loadSkills,
+  findMatchingSkill,
+  filterToolsBySkill,
+  setFrontmatterParser,
+  type Skill,
+} from "@omni/improve"
+import { parseFrontmatter } from "./user-commands.ts"
 import { loadDotenv } from "./env.ts"
 import { confirm } from "./prompts.ts"
 import { renderEvent } from "./render.ts"
@@ -65,6 +76,10 @@ loadDotenv([resolve(workspaceRoot, ".env"), resolve(process.cwd(), ".env")])
 ensureOmniHome()
 const paths = omniPaths()
 const wsPaths = workspacePaths()
+setFrontmatterParser((raw) => {
+  const r = parseFrontmatter(raw)
+  return { frontmatter: r.frontmatter as Record<string, unknown>, body: r.body }
+})
 const config: Config = (() => {
   try {
     return loadMergedConfig()
@@ -218,6 +233,34 @@ const engine = new Engine({
 
 sessions.create(engine.sessionId(), modelName)
 
+// ─── Skills ────────────────────────────────────────────────────────────────
+const skills = loadSkills()
+let activeSkill: Skill | null = null
+const skillAutoRoute = config.skills?.autoRoute !== false
+const skillsEnabled = (() => {
+  const enabled = config.skills?.enabled
+  const disabled = config.skills?.disabled ?? []
+  if (enabled) return new Set(enabled)
+  if (disabled.length > 0) {
+    const out = new Set<string>()
+    for (const [name] of skills) if (!disabled.includes(name)) out.add(name)
+    return out
+  }
+  return new Set(skills.keys())
+})()
+
+function applySkill(skill: Skill | null) {
+  activeSkill = skill
+  // The engine's systemPrompt and tool set are fixed at construction. We
+  // can't swap them in mid-flight without a new engine — but we DO support
+  // it by prepending the skill's prompt as a fresh system message before
+  // each run.
+}
+
+function activeSkillTools(): readonly Tool[] {
+  return activeSkill ? filterToolsBySkill(tools, activeSkill) : tools
+}
+
 // ─── Optional file tracer ──────────────────────────────────────────────────
 const traceEnabled = config.storage?.tracesEnabled !== false
 const fileTracer = traceEnabled
@@ -271,11 +314,25 @@ async function run() {
       continue
     }
 
+    // Auto-route to a skill if the input matches and auto-route is enabled
+    // and the user hasn't manually pinned a skill.
+    if (skillAutoRoute && !activeSkill && !input.startsWith("/")) {
+      const eligible = [...skills.values()].filter((s) => skillsEnabled.has(s.name))
+      const matched = findMatchingSkill(input, eligible)
+      if (matched) {
+        applySkill(matched)
+        console.log(ansi.dim(`[skill auto-activated: ${matched.name}]`))
+      }
+    }
+
     const cmdResult = await tryDispatchCommand(input, {
       engine,
       modelName,
       profile: activeProfile,
       strategy: activeStrategy,
+      skills,
+      activeSkill,
+      onSkillChange: applySkill,
     })
     let effectiveInput = input
     if (cmdResult) {
@@ -295,8 +352,17 @@ async function run() {
     }
 
     currentRun = new AbortController()
+    const runOpts: { signal: AbortSignal; systemPromptPrefix?: string; enabledTools?: Set<string> } = {
+      signal: currentRun.signal,
+    }
+    if (activeSkill) {
+      runOpts.systemPromptPrefix = activeSkill.systemPrompt
+      if (activeSkill.toolsOnly) {
+        runOpts.enabledTools = new Set(activeSkill.toolsOnly)
+      }
+    }
     try {
-      for await (const ev of engine.run(effectiveInput, { signal: currentRun.signal })) {
+      for await (const ev of engine.run(effectiveInput, runOpts)) {
         const out = renderEvent(ev)
         if (out) process.stdout.write(out)
         if (fileTracer) fileTracer.record(ev)

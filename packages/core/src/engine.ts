@@ -69,6 +69,21 @@ export interface EngineConfig {
 export interface RunOptions {
   /** Caller-side cancellation. Combined with the engine's internal abort. */
   readonly signal?: AbortSignal
+  /**
+   * Optional system prompt prefix injected before THIS run only. Stays
+   * with the conversation history (it's a real assistant-side anchor),
+   * but is not part of the engine's persistent system prompt.
+   *
+   * Used by surfaces to temporarily layer in a skill's system prompt or
+   * a planner's directive without rebuilding the engine.
+   */
+  readonly systemPromptPrefix?: string
+  /**
+   * Optional tool subset for THIS run. When set, the engine ignores any
+   * tool call whose name isn't in the set (emits `tool.invalid` with the
+   * reason "tool not enabled for this run").
+   */
+  readonly enabledTools?: ReadonlySet<string>
 }
 
 const DEFAULT_MAX_ITERATIONS = 25
@@ -199,13 +214,20 @@ export class Engine {
   private async *_runInternal(input: string, opts: RunOptions): AsyncIterable<EngineEvent> {
     const startedAt = Date.now()
     const { signal, cleanup } = combineSignals(this._abortController.signal, opts.signal)
+    const enabledTools = opts.enabledTools
 
     try {
       yield { type: "engine.start", sessionId: this._sessionId, input }
+      if (opts.systemPromptPrefix) {
+        this._ctx.append(makeMessage("system", opts.systemPromptPrefix))
+      }
       this._ctx.append(makeMessage("user", input))
       this._touch()
 
-      const toolSchemas = this.config.tools.map(toToolSchema)
+      const effectiveTools = enabledTools
+        ? this.config.tools.filter((t) => enabledTools.has(t.name))
+        : this.config.tools
+      const toolSchemas = effectiveTools.map(toToolSchema)
       let reason: DoneReason = "max_iterations"
 
       outer: for (let i = 1; i <= this._maxIterations; i++) {

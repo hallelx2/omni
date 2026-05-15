@@ -1,5 +1,5 @@
 import type { Engine } from "@omni/core"
-import type { ModelProfile, AdaptedStrategy } from "@omni/improve"
+import type { ModelProfile, AdaptedStrategy, Skill } from "@omni/improve"
 import { ansi } from "./ansi.ts"
 import {
   loadUserCommands,
@@ -13,6 +13,9 @@ export interface CommandContext {
   readonly modelName: string
   readonly profile?: ModelProfile | null
   readonly strategy?: AdaptedStrategy | null
+  readonly skills?: Map<string, Skill>
+  readonly activeSkill?: Skill | null
+  readonly onSkillChange?: (skill: Skill | null) => void
 }
 
 export interface SlashCommand {
