@@ -94,8 +94,13 @@ export {
   omniMemoryPath,
   omniSettingsPath,
   omniPaths,
+  workspaceOmniDir,
+  workspacePaths,
+  userCommandsDir,
+  userSkillsDir,
+  userHooksDir,
 } from "./paths.ts"
-export type { OmniPaths } from "./paths.ts"
+export type { OmniPaths, WorkspacePaths } from "./paths.ts"
 
 export {
   ConfigSchema,
@@ -104,5 +109,9 @@ export {
   ensureOmniHome,
   resolveApiKey,
   resolveBaseURL,
+  loadMergedConfig,
+  mergeConfigs,
+  expandEnv,
+  expandEnvDeep,
 } from "./config.ts"
 export type { Config } from "./config.ts"

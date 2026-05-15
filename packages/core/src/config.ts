@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs"
-import { dirname } from "node:path"
-import { omniConfigPath, omniHome } from "./paths.ts"
+import { dirname, join } from "node:path"
+import { omniConfigPath, omniHome, workspaceOmniDir } from "./paths.ts"
 
 /**
  * User-level configuration persisted in `~/.omni/config.json`. Read at CLI
@@ -52,6 +52,62 @@ export const ConfigSchema = z.object({
   storage: z
     .object({
       tracesEnabled: z.boolean().optional(),
+    })
+    .optional(),
+
+  mcp: z
+    .object({
+      servers: z
+        .record(
+          z.string(),
+          z.discriminatedUnion("kind", [
+            z.object({
+              kind: z.literal("stdio"),
+              command: z.string(),
+              args: z.array(z.string()).optional(),
+              env: z.record(z.string(), z.string()).optional(),
+              cwd: z.string().optional(),
+              permission: z.enum(["auto", "ask", "deny"]).optional(),
+              prefix: z.string().optional(),
+            }),
+            z.object({
+              kind: z.literal("http"),
+              url: z.string(),
+              headers: z.record(z.string(), z.string()).optional(),
+              permission: z.enum(["auto", "ask", "deny"]).optional(),
+              prefix: z.string().optional(),
+            }),
+          ]),
+        )
+        .optional(),
+    })
+    .optional(),
+
+  hooks: z
+    .array(
+      z.union([
+        z.object({
+          event: z.enum(["preToolUse", "postToolUse", "preModel", "onError", "onSessionStart", "onSessionEnd"]),
+          match: z
+            .object({
+              tool: z.string().optional(),
+            })
+            .optional(),
+          command: z.string(),
+          timeoutMs: z.number().int().positive().optional(),
+        }),
+        z.object({
+          module: z.string(),
+        }),
+      ]),
+    )
+    .optional(),
+
+  skills: z
+    .object({
+      enabled: z.array(z.string()).optional(),
+      disabled: z.array(z.string()).optional(),
+      autoRoute: z.boolean().optional(),
     })
     .optional(),
 })
@@ -133,6 +189,89 @@ export function resolveApiKey(
   const fromEnv = process.env[envKey[provider]]
   if (fromEnv) return fromEnv
   return config.providers?.[provider]?.apiKey
+}
+
+/**
+ * Load and merge user config with the workspace config (if any). The
+ * workspace overrides the user for scalars; arrays concatenate; records
+ * merge with workspace winning on key collision.
+ *
+ * Precedence chain: explicit args > env > workspace > user > defaults.
+ */
+export function loadMergedConfig(cwd?: string): Config {
+  const user = loadConfig(omniConfigPath())
+  const wsDir = workspaceOmniDir(cwd)
+  if (!wsDir) return user
+  const wsConfigPath = join(wsDir, "config.json")
+  if (!existsSync(wsConfigPath)) return user
+  const ws = loadConfig(wsConfigPath)
+  return mergeConfigs(user, ws)
+}
+
+/**
+ * Deep-merge two configs: scalars from `over` win; arrays from `over`
+ * concatenate to `base`'s arrays; nested records merge recursively.
+ *
+ * Exported because consumers occasionally want to merge in additional
+ * layers (e.g. an ephemeral session override on top of file-based config).
+ */
+export function mergeConfigs(base: Config, over: Config): Config {
+  const out: Record<string, unknown> = { ...base }
+  for (const [key, overVal] of Object.entries(over)) {
+    if (overVal === undefined) continue
+    const baseVal = (base as Record<string, unknown>)[key]
+    if (Array.isArray(baseVal) && Array.isArray(overVal)) {
+      out[key] = [...baseVal, ...overVal]
+    } else if (isPlainObject(baseVal) && isPlainObject(overVal)) {
+      out[key] = mergeRecord(baseVal, overVal)
+    } else {
+      out[key] = overVal
+    }
+  }
+  return ConfigSchema.parse(out)
+}
+
+function mergeRecord(
+  base: Record<string, unknown>,
+  over: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base }
+  for (const [k, v] of Object.entries(over)) {
+    if (v === undefined) continue
+    const b = base[k]
+    if (Array.isArray(b) && Array.isArray(v)) {
+      out[k] = [...b, ...v]
+    } else if (isPlainObject(b) && isPlainObject(v)) {
+      out[k] = mergeRecord(b, v)
+    } else {
+      out[k] = v
+    }
+  }
+  return out
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v)
+}
+
+/**
+ * Substitute `${VAR}` references with environment variables. Used by config
+ * loaders (especially MCP server `env`/`headers`) so secrets stay in shell
+ * env instead of config files.
+ */
+export function expandEnv(value: string): string {
+  return value.replace(/\$\{([A-Z0-9_]+)\}/g, (_, name) => process.env[name] ?? "")
+}
+
+export function expandEnvDeep<T>(value: T): T {
+  if (typeof value === "string") return expandEnv(value) as unknown as T
+  if (Array.isArray(value)) return value.map(expandEnvDeep) as unknown as T
+  if (isPlainObject(value)) {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value)) out[k] = expandEnvDeep(v)
+    return out as unknown as T
+  }
+  return value
 }
 
 /**

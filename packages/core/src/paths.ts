@@ -1,5 +1,6 @@
 import { homedir } from "node:os"
-import { resolve, join } from "node:path"
+import { resolve, join, dirname } from "node:path"
+import { existsSync } from "node:fs"
 
 /**
  * Resolves Omni's home directory, where per-user state lives across sessions:
@@ -65,4 +66,55 @@ export function omniPaths(): OmniPaths {
     memory: omniMemoryPath(),
     settings: omniSettingsPath(),
   }
+}
+
+/**
+ * Walk upward from `cwd` looking for a `.omni/` directory that marks a
+ * workspace. Returns the path to that directory, or `null` if none is found.
+ *
+ * Useful for per-project config, commands, skills, MCP servers, and hooks
+ * that override the user-level defaults at `~/.omni/`.
+ */
+export function workspaceOmniDir(cwd: string = process.cwd()): string | null {
+  let dir = resolve(cwd)
+  let prev = ""
+  while (dir !== prev) {
+    const candidate = join(dir, ".omni")
+    if (existsSync(candidate)) return candidate
+    prev = dir
+    dir = dirname(dir)
+  }
+  return null
+}
+
+/** Resolved paths for a workspace (or `null` if there isn't one). */
+export interface WorkspacePaths {
+  readonly home: string
+  readonly config: string
+  readonly commands: string
+  readonly skills: string
+  readonly hooks: string
+}
+
+export function workspacePaths(cwd?: string): WorkspacePaths | null {
+  const dir = workspaceOmniDir(cwd)
+  if (!dir) return null
+  return {
+    home: dir,
+    config: join(dir, "config.json"),
+    commands: join(dir, "commands"),
+    skills: join(dir, "skills"),
+    hooks: join(dir, "hooks"),
+  }
+}
+
+/** User-level versions of the per-folder paths (commands, skills, hooks). */
+export function userCommandsDir(): string {
+  return join(omniHome(), "commands")
+}
+export function userSkillsDir(): string {
+  return join(omniHome(), "skills")
+}
+export function userHooksDir(): string {
+  return join(omniHome(), "hooks")
 }
