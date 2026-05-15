@@ -61,6 +61,12 @@ export interface ModelProfile {
   readonly nativeToolCalls: boolean
   readonly followsInstructions: boolean
   readonly verboseByDefault: boolean
+  /**
+   * Whether the model reliably emits parseable JSON when asked (for
+   * generateObject-style flows). Set by the probe; defaults to false on
+   * unknown / lossy models.
+   */
+  readonly supportsStructuredOutput?: boolean
   readonly averageLatencyMs: number
   readonly errorRate: number
   /** Tokens of context the model successfully echoed back (lower bound). */
@@ -174,12 +180,46 @@ export async function probeModel(
   const averageLatencyMs =
     latencies.length === 0 ? 0 : latencies.reduce((s, n) => s + n, 0) / latencies.length
 
+  // Probe 4: structured output reliability — ask for a tiny JSON object,
+  // try to parse the result. Models that pass this can be opted into
+  // generateObject-style flows in Planner/Critic.
+  probes++
+  let supportsStructuredOutput = false
+  try {
+    const t0 = Date.now()
+    const reply = await collectText(model, [
+      {
+        role: "system",
+        content:
+          'Output ONLY a JSON object — no preamble, no markdown fence. The object MUST have exactly two keys: status (the string "ok") and answer (the number 42).',
+      },
+      { role: "user", content: "Emit the object now." },
+    ])
+    latencies.push(Date.now() - t0)
+    const trimmed = reply.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "")
+    try {
+      const parsed = JSON.parse(trimmed) as { status?: unknown; answer?: unknown }
+      if (parsed.status === "ok" && parsed.answer === 42) {
+        supportsStructuredOutput = true
+        notes.push("Probe 4 (structured output): pass — clean JSON")
+      } else {
+        notes.push(`Probe 4 (structured output): partial — JSON parsed but wrong values`)
+      }
+    } catch {
+      notes.push(`Probe 4 (structured output): fail — unparseable response`)
+    }
+  } catch (e) {
+    errors++
+    notes.push(`Probe 4 (structured output): error — ${(e as Error).message}`)
+  }
+
   return {
     modelId: model.id,
     probedAt: Date.now(),
     nativeToolCalls,
     followsInstructions,
     verboseByDefault,
+    supportsStructuredOutput,
     averageLatencyMs,
     errorRate: probes === 0 ? 0 : errors / probes,
     notes,

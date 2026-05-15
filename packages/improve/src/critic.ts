@@ -1,3 +1,5 @@
+import { generateObject } from "ai"
+import { z } from "zod"
 import type { ModelAdapter, Message } from "@omni/core"
 
 export type CritiqueVerdict = "ok" | "concern" | "fail"
@@ -13,18 +15,20 @@ export interface CriticOptions {
   readonly systemPrompt?: string
   /** When verdict is `fail` AND score below this, suggest retrying. Default 0.4. */
   readonly retryBelow?: number
+  /** Use generateObject when set; falls back to text parsing on errors. */
+  readonly useStructuredOutput?: boolean
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly languageModel?: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly providerOptions?: Record<string, any>
 }
 
-/**
- * Reviews assistant outputs and tool results, returning a structured critique.
- *
- * Two flavors:
- *   - {@link reviewMessages}: review a slice of conversation history (e.g. last turn)
- *   - {@link reviewToolResult}: review a specific tool result for plausibility
- *
- * The critic itself uses a model — typically the same one as the executor for
- * cost, or a stronger one for higher fidelity.
- */
+const CritiqueSchema = z.object({
+  verdict: z.enum(["ok", "concern", "fail"]),
+  score: z.number().min(0).max(1),
+  issues: z.array(z.string()),
+})
+
 export class Critic {
   constructor(
     private readonly model: ModelAdapter,
@@ -35,14 +39,7 @@ export class Critic {
     const transcript = messages
       .map((m) => `[${m.role}] ${m.content}${m.toolCalls ? ` (tool: ${m.toolCalls.map((c) => c.name).join(",")})` : ""}`)
       .join("\n")
-    const userMsg = `Review the following agent transcript and judge the quality of the assistant's response.
-
-Transcript:
-${transcript}
-
-Respond on exactly two lines:
-  Line 1: VERDICT=<ok|concern|fail> SCORE=<0.0-1.0>
-  Line 2: ISSUES: <semicolon-separated concerns, or NONE>`
+    const userMsg = `Review the following agent transcript and judge the quality of the assistant's response.\n\nTranscript:\n${transcript}`
     return this._ask(userMsg)
   }
 
@@ -57,26 +54,56 @@ Respond on exactly two lines:
 Tool: ${toolName}
 Args: ${JSON.stringify(args).slice(0, 1000)}
 Result: ${typeof result === "string" ? result.slice(0, 2000) : JSON.stringify(result).slice(0, 2000)}
-Expectation: ${expectation}
-
-Respond on exactly two lines:
-  Line 1: VERDICT=<ok|concern|fail> SCORE=<0.0-1.0>
-  Line 2: ISSUES: <semicolon-separated concerns, or NONE>`
+Expectation: ${expectation}`
     return this._ask(userMsg)
   }
 
-  /** True if the critique indicates the action should be retried. */
   shouldRetry(c: Critique): boolean {
     return c.verdict === "fail" && c.score < (this.options.retryBelow ?? 0.4)
   }
 
   private async _ask(userMsg: string): Promise<Critique> {
+    if (this.options.useStructuredOutput && this.options.languageModel) {
+      try {
+        return await this._askStructured(userMsg)
+      } catch {
+        // fall through to text parsing on structured failure
+      }
+    }
+    return await this._askText(userMsg)
+  }
+
+  private async _askStructured(userMsg: string): Promise<Critique> {
+    const system =
+      this.options.systemPrompt ??
+      `You are a strict critic of agent behavior. Judge whether an assistant turn or tool result is correct, helpful, and matches the user's request.`
+    const result = await generateObject({
+      model: this.options.languageModel,
+      schema: CritiqueSchema,
+      system,
+      prompt: userMsg,
+      ...(this.options.providerOptions ? { providerOptions: this.options.providerOptions } : {}),
+    })
+    return {
+      verdict: result.object.verdict,
+      score: result.object.score,
+      issues: result.object.issues,
+      raw: JSON.stringify(result.object),
+    }
+  }
+
+  private async _askText(userMsg: string): Promise<Critique> {
     const system =
       this.options.systemPrompt ??
       `You are a strict critic of agent behavior. You judge whether an assistant turn or tool result is correct, helpful, and matches the user's request. Always answer in the exact format requested.`
+
+    const formatInstr = `Respond on exactly two lines:
+  Line 1: VERDICT=<ok|concern|fail> SCORE=<0.0-1.0>
+  Line 2: ISSUES: <semicolon-separated concerns, or NONE>`
+
     const messages = [
       { id: "c-sys", role: "system" as const, content: system, timestamp: Date.now() },
-      { id: "c-user", role: "user" as const, content: userMsg, timestamp: Date.now() },
+      { id: "c-user", role: "user" as const, content: `${userMsg}\n\n${formatInstr}`, timestamp: Date.now() },
     ]
     const ac = new AbortController()
     let text = ""

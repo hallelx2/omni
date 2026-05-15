@@ -1,3 +1,5 @@
+import { generateObject } from "ai"
+import { z } from "zod"
 import type { ModelAdapter, ToolMeta } from "@omni/core"
 
 export interface PlanStep {
@@ -16,7 +18,39 @@ export interface Plan {
 export interface PlannerOptions {
   readonly maxSteps?: number
   readonly systemPrompt?: string
+  /**
+   * When true, use the AI SDK's `generateObject` (with a Zod schema) instead
+   * of parsing text. Reliable on models that support structured output
+   * (verified via `ModelProfile.supportsStructuredOutput`); fragile or
+   * unsupported on many open models.
+   */
+  readonly useStructuredOutput?: boolean
+  /**
+   * Provider-specific options pass-through (e.g. OpenAI's strict mode).
+   * Only consulted when `useStructuredOutput` is true.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly providerOptions?: Record<string, any>
+  /**
+   * For generateObject, supply the underlying LanguageModelV2 from the AI
+   * SDK provider. When omitted, structured mode is unavailable and the
+   * planner falls back to text parsing.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly languageModel?: any
 }
+
+const PlanStepSchema = z.object({
+  action: z.string().describe("One concise sentence describing the step"),
+  tool: z
+    .string()
+    .optional()
+    .describe("Tool name when the step uses one (e.g. 'bash', 'edit', 'glob')"),
+})
+
+const PlanSchema = z.object({
+  steps: z.array(PlanStepSchema).min(1).max(20),
+})
 
 /**
  * Decomposes a user task into ordered steps before the execution model
@@ -27,9 +61,12 @@ export interface PlannerOptions {
  * The planner may use a stronger model than the executor (e.g. Claude plans,
  * MiMo executes) by passing a different `ModelAdapter`.
  *
- * The output is parsed defensively: malformed responses still surface as a
- * single-step plan containing the raw text. Callers can use `plan.steps`
- * directly or fall back to `plan.raw`.
+ * Two output modes:
+ *   - Text mode (default): parse a numbered list from the model's text
+ *     response. Works on any model that follows instructions.
+ *   - Structured mode (`useStructuredOutput: true` + `languageModel`):
+ *     uses AI SDK's `generateObject` with a Zod schema. Cleaner output,
+ *     but requires a model with reliable JSON support.
  */
 export class Planner {
   constructor(
@@ -38,6 +75,48 @@ export class Planner {
   ) {}
 
   async plan(task: string, tools: readonly ToolMeta[] = []): Promise<Plan> {
+    if (this.options.useStructuredOutput && this.options.languageModel) {
+      try {
+        return await this._planStructured(task, tools)
+      } catch {
+        // fall through to text parsing if structured mode errors
+      }
+    }
+    return await this._planText(task, tools)
+  }
+
+  private async _planStructured(task: string, tools: readonly ToolMeta[]): Promise<Plan> {
+    const maxSteps = this.options.maxSteps ?? 8
+    const system =
+      this.options.systemPrompt ??
+      `You decompose tasks into ordered steps. Use up to ${maxSteps} steps. Be concrete and concise.`
+    const toolsBlock =
+      tools.length === 0
+        ? ""
+        : "\n\nAvailable tools:\n" + tools.map((t) => `- ${t.name}: ${t.description}`).join("\n")
+    const prompt = `Task: ${task}${toolsBlock}\n\nReturn an ordered list of steps.`
+
+    const result = await generateObject({
+      model: this.options.languageModel,
+      schema: PlanSchema,
+      system,
+      prompt,
+      ...(this.options.providerOptions ? { providerOptions: this.options.providerOptions } : {}),
+    })
+
+    const steps: PlanStep[] = result.object.steps.slice(0, maxSteps).map((s, i) => ({
+      index: i + 1,
+      action: s.action,
+      tool: s.tool,
+    }))
+    return {
+      task,
+      steps,
+      raw: JSON.stringify(result.object),
+    }
+  }
+
+  private async _planText(task: string, tools: readonly ToolMeta[]): Promise<Plan> {
     const maxSteps = this.options.maxSteps ?? 8
     const system =
       this.options.systemPrompt ??
