@@ -108,10 +108,10 @@ describe("chunkToolResult", () => {
 })
 
 describe("ContextManager.assemble emits FitResult", () => {
-  test("returns FitResult shape", () => {
+  test("returns FitResult shape", async () => {
     const cm = new ContextManager(new SlidingWindowStrategy())
     cm.append(mkMsg("user", "hi"))
-    const r = cm.assemble({ maxMessages: 10 })
+    const r = await cm.assemble({ maxMessages: 10 })
     expect(r.messages.length).toBe(1)
     expect(r.dropped).toBe(0)
   })
