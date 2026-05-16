@@ -55,7 +55,7 @@ export type EngineEvent =
   /** Non-fatal warning (tracer throw, permission gate exception, etc.). */
   | {
       readonly type: "engine.warning"
-      readonly category: "permission_gate" | "tracer" | "other"
+      readonly category: "permission_gate" | "tracer" | "hook" | "other"
       readonly message: string
       readonly cause?: unknown
     }

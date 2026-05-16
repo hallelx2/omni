@@ -110,6 +110,40 @@ describe("Engine hooks — preToolUse", () => {
     }
   })
 
+  test("hook rewriting args into invalid shape warns and falls back", async () => {
+    const hooks: HookModule[] = [
+      {
+        name: "bad-rewriter",
+        // Rewrites `text` to a number — fails the z.string() schema.
+        preToolUse: async () => ({ args: { text: 42 } }),
+      },
+    ]
+    const engine = new Engine({
+      model: new MockAdapter({
+        script: [
+          { kind: "tool", name: "echo", args: { text: "original" } },
+          { kind: "text", text: "done" },
+        ],
+      }),
+      tools: [makeEcho()],
+      hooks,
+    })
+    const events = await collect(engine.run("go"))
+    const warn = events.find(
+      (e) => e.type === "engine.warning" && e.category === "hook",
+    )
+    expect(warn).toBeDefined()
+    if (warn?.type === "engine.warning") {
+      expect(warn.message).toContain("echo")
+    }
+    const result = events.find((e) => e.type === "tool.result")
+    expect(result).toBeDefined()
+    if (result?.type === "tool.result") {
+      // Fell back to original args.
+      expect((result.result as { text: string }).text).toBe("original")
+    }
+  })
+
   test("hook throwing is swallowed; tool still runs", async () => {
     const hooks: HookModule[] = [
       {

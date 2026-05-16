@@ -338,7 +338,7 @@ export class Engine {
           break
         }
 
-        const executions = toolCalls.map((c) => this._executeToolCall(c, signal))
+        const executions = toolCalls.map((c) => this._executeToolCall(c, signal, enabledTools))
         for await (const ev of mergeStreams(executions)) {
           yield ev
         }
@@ -452,10 +452,18 @@ export class Engine {
   private async *_executeToolCall(
     call: ToolCall,
     parentSignal: AbortSignal,
+    enabledTools?: ReadonlySet<string>,
   ): AsyncIterable<EngineEvent> {
     const tool = this._toolMap.get(call.name)
     if (!tool) {
       const reason = `unknown tool: ${call.name}`
+      yield { type: "tool.invalid", call, reason }
+      this._ctx.append(makeToolMessage(call.id, `Error: ${reason}`))
+      return
+    }
+    if (enabledTools && !enabledTools.has(call.name)) {
+      const allowed = [...enabledTools].sort().join(", ") || "(none)"
+      const reason = `tool '${call.name}' is not enabled for this run; allowed: ${allowed}`
       yield { type: "tool.invalid", call, reason }
       this._ctx.append(makeToolMessage(call.id, `Error: ${reason}`))
       return
@@ -517,7 +525,27 @@ export class Engine {
       cleanup()
       return
     }
-    const effectiveCall = preResult?.args !== undefined ? { ...call, args: preResult.args } : call
+    // If the preToolUse hook rewrote args, re-validate against the schema so
+    // we don't pass garbage to the tool. On validation failure we WARN and
+    // fall back to the original args (the hook is informational; the engine
+    // remains the source of truth for correctness).
+    let argsToUse: unknown = validation.value
+    let effectiveArgs: unknown = call.args
+    if (preResult?.args !== undefined) {
+      const re = tool.schema.safeParse(preResult.args)
+      if (re.success) {
+        argsToUse = re.data
+        effectiveArgs = preResult.args
+      } else {
+        yield {
+          type: "engine.warning",
+          category: "hook",
+          message: `preToolUse rewrote ${tool.name} args into a shape that failed schema validation; using original args. (${re.error.issues.map((i) => i.message).join("; ")})`,
+          cause: re.error,
+        }
+      }
+    }
+    const effectiveCall = effectiveArgs !== call.args ? { ...call, args: effectiveArgs } : call
 
     yield { type: "tool.start", call: effectiveCall }
     const startedAt = Date.now()
@@ -525,13 +553,6 @@ export class Engine {
     // Run the tool concurrently; push the terminal event and close the queue.
     void (async () => {
       try {
-        const argsToUse =
-          preResult?.args !== undefined
-            ? (() => {
-                const re = tool.schema.safeParse(preResult.args)
-                return re.success ? re.data : validation.value
-              })()
-            : validation.value
         const rawResult = await tool.execute(argsToUse, toolCtx)
         const finalResult = await runPostToolUse(this._hooks, tool, effectiveCall, rawResult, toolCtx)
         const durationMs = Date.now() - startedAt
