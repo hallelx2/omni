@@ -3,11 +3,13 @@ import { ulid } from "ulid"
 import {
   ContextManager,
   SlidingWindowStrategy,
+  SummarizingStrategy,
   TokenBudgetStrategy,
   TiktokenTokenizer,
   CharEstimator,
   chunkToolResult,
   type Message,
+  type ModelAdapter,
 } from "../src/index.ts"
 
 function mkMsg(role: Message["role"], content: string): Message {
@@ -114,6 +116,103 @@ describe("ContextManager.assemble emits FitResult", () => {
     const r = await cm.assemble({ maxMessages: 10 })
     expect(r.messages.length).toBe(1)
     expect(r.dropped).toBe(0)
+  })
+})
+
+describe("SummarizingStrategy caching", () => {
+  function mockSummariser(replyText: string): {
+    adapter: ModelAdapter
+    callCount: () => number
+  } {
+    let calls = 0
+    const adapter: ModelAdapter = {
+      id: "mock-summariser",
+      capabilities: {
+        supportsToolCalls: false,
+        supportsStreaming: true,
+        contextWindow: 8192,
+      },
+      async *complete() {
+        calls++
+        yield { type: "delta", text: replyText }
+        yield { type: "done" }
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any
+    return { adapter, callCount: () => calls }
+  }
+
+  test("reuses cached summary when toSummarise window is unchanged", async () => {
+    const { adapter, callCount } = mockSummariser("- task A\n- decision X")
+    const s = new SummarizingStrategy({
+      summariser: adapter,
+      keepRecent: 2,
+      summariseAboveTokens: 1, // force summarisation
+      tokenizer: new CharEstimator(),
+    })
+    const msgs: Message[] = [
+      mkMsg("system", "sys"),
+      mkMsg("user", "first"),
+      mkMsg("assistant", "first-reply"),
+      mkMsg("user", "newest-1"),
+      mkMsg("assistant", "newest-2"),
+    ]
+    const r1 = await s.fit(msgs, { maxTokens: 200 })
+    expect(r1.summarised).toBe(true)
+    expect(callCount()).toBe(1)
+    const r2 = await s.fit(msgs, { maxTokens: 200 })
+    expect(r2.summarised).toBe(true)
+    expect(callCount()).toBe(1) // cache hit; no new summariser call
+  })
+
+  test("extends summary when toSummarise gains new tail messages", async () => {
+    const { adapter, callCount } = mockSummariser("- merged summary")
+    const s = new SummarizingStrategy({
+      summariser: adapter,
+      keepRecent: 2,
+      summariseAboveTokens: 1,
+      tokenizer: new CharEstimator(),
+    })
+    const base: Message[] = [
+      mkMsg("system", "sys"),
+      mkMsg("user", "first"),
+      mkMsg("assistant", "first-reply"),
+      mkMsg("user", "recent-1"),
+      mkMsg("assistant", "recent-2"),
+    ]
+    await s.fit(base, { maxTokens: 200 })
+    expect(callCount()).toBe(1)
+
+    // New turn appended: oldest "recent" rolls into toSummarise.
+    const extended: Message[] = [
+      ...base,
+      mkMsg("user", "new-recent-1"),
+      mkMsg("assistant", "new-recent-2"),
+    ]
+    const r2 = await s.fit(extended, { maxTokens: 200 })
+    expect(r2.summarised).toBe(true)
+    expect(callCount()).toBe(2) // one extend call, not a fresh full-summary
+  })
+
+  test("resetCache forces a fresh summarise", async () => {
+    const { adapter, callCount } = mockSummariser("- summary")
+    const s = new SummarizingStrategy({
+      summariser: adapter,
+      keepRecent: 2,
+      summariseAboveTokens: 1,
+      tokenizer: new CharEstimator(),
+    })
+    const msgs: Message[] = [
+      mkMsg("system", "sys"),
+      mkMsg("user", "a"),
+      mkMsg("assistant", "b"),
+      mkMsg("user", "c"),
+      mkMsg("assistant", "d"),
+    ]
+    await s.fit(msgs, { maxTokens: 200 })
+    s.resetCache()
+    await s.fit(msgs, { maxTokens: 200 })
+    expect(callCount()).toBe(2)
   })
 })
 

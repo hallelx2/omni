@@ -120,6 +120,17 @@ export class TokenBudgetStrategy implements ContextStrategy {
  *     strategy without erroring.
  */
 export class SummarizingStrategy implements ContextStrategy {
+  /**
+   * Most-recent cached summary so we don't re-run the summariser on every
+   * call. Keyed implicitly by the IDs it covers (`coveredIds`); we reuse it
+   * exactly when the next `toSummarise` window has the same IDs, and we
+   * *extend* it when the new window starts with the same prefix.
+   */
+  private _cache: {
+    readonly coveredIds: readonly string[]
+    readonly text: string
+  } | null = null
+
   constructor(
     private readonly options: {
       readonly summariser: ModelAdapter
@@ -159,10 +170,11 @@ export class SummarizingStrategy implements ContextStrategy {
 
     const toSummarise = rest.slice(0, rest.length - keepRecent)
     const recent = rest.slice(rest.length - keepRecent)
+    const toSummariseIds = toSummarise.map((m) => m.id)
 
     let summaryText: string
     try {
-      summaryText = await this._summarise(toSummarise)
+      summaryText = await this._getOrUpdateSummary(toSummarise, toSummariseIds)
     } catch {
       // Summariser failure: fall back to plain budget fit, no surprises.
       return await inner.fit(messages, limits)
@@ -178,6 +190,64 @@ export class SummarizingStrategy implements ContextStrategy {
     const newView: readonly Message[] = [...system, summaryMsg, ...recent]
     const r = await inner.fit(newView, limits)
     return { ...r, summarised: true, dropped: r.dropped + toSummarise.length }
+  }
+
+  /** For tests/observability: how many times has a fresh summarise call been issued. */
+  private _summariseCalls = 0
+  /** @internal */ summariseCalls(): number {
+    return this._summariseCalls
+  }
+
+  /** Drop any cached summary (e.g. after session reset). */
+  resetCache(): void {
+    this._cache = null
+  }
+
+  private async _getOrUpdateSummary(
+    toSummarise: readonly Message[],
+    ids: readonly string[],
+  ): Promise<string> {
+    const cache = this._cache
+    if (cache && idsEqual(cache.coveredIds, ids)) {
+      return cache.text
+    }
+    if (cache && isExtensionOf(cache.coveredIds, ids)) {
+      const newTail = toSummarise.slice(cache.coveredIds.length)
+      const updated = await this._extendSummary(cache.text, newTail)
+      this._cache = { coveredIds: ids, text: updated }
+      return updated
+    }
+    this._summariseCalls++
+    const text = await this._summarise(toSummarise)
+    this._cache = { coveredIds: ids, text }
+    return text
+  }
+
+  private async _extendSummary(
+    priorSummary: string,
+    newMessages: readonly Message[],
+  ): Promise<string> {
+    this._summariseCalls++
+    const transcript = newMessages
+      .map((m) => `[${m.role}] ${m.content}${m.toolCalls ? ` (called ${m.toolCalls.length} tool(s))` : ""}`)
+      .join("\n")
+      .slice(0, 16_000)
+    const promptMessages: readonly Message[] = [
+      {
+        id: "s-sys",
+        role: "system",
+        content:
+          "You maintain a rolling summary of an agent conversation. You will receive the prior summary and the new turns since. Output an UPDATED summary in 4-8 bullets covering: the original task, key decisions, files/locations referenced, unresolved sub-tasks. Be terse. No preamble.",
+        timestamp: Date.now(),
+      },
+      {
+        id: "s-user",
+        role: "user",
+        content: `Prior summary:\n${priorSummary}\n\nNew turns:\n${transcript}\n\nProduce the updated summary now.`,
+        timestamp: Date.now(),
+      },
+    ]
+    return await this._runSummariser(promptMessages)
   }
 
   private async _summarise(messages: readonly Message[]): Promise<string> {
@@ -201,7 +271,10 @@ export class SummarizingStrategy implements ContextStrategy {
         timestamp: Date.now(),
       },
     ]
+    return await this._runSummariser(promptMessages)
+  }
 
+  private async _runSummariser(promptMessages: readonly Message[]): Promise<string> {
     const ac = new AbortController()
     let text = ""
     for await (const ev of this.options.summariser.complete({
@@ -215,6 +288,19 @@ export class SummarizingStrategy implements ContextStrategy {
     }
     return text.trim()
   }
+}
+
+function idsEqual(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
+  return true
+}
+
+/** True when `cached` is a strict prefix of `next` (next extends cached). */
+function isExtensionOf(cached: readonly string[], next: readonly string[]): boolean {
+  if (next.length <= cached.length) return false
+  for (let i = 0; i < cached.length; i++) if (cached[i] !== next[i]) return false
+  return true
 }
 
 /**
