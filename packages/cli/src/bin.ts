@@ -272,7 +272,7 @@ function continueSession(id: string): boolean {
       metadata: m.metadata,
       timestamp: m.timestamp,
     })),
-    usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, callCount: 0 },
+    usage: reconstructUsage(id),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -281,9 +281,54 @@ function continueSession(id: string): boolean {
   return true
 }
 
+/**
+ * Replay this session's stored `engine.usage` events to recover the
+ * cumulative usage at the point we left off. The last event's `total`
+ * IS the cumulative value (the engine emits it each model call). If
+ * none exists (older sessions, or sessions that never completed a call),
+ * fall back to zero — which is correct.
+ */
+function reconstructUsage(sessionId: string): {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  callCount: number
+  costUsd?: number
+} {
+  const stored = events.bySession(sessionId)
+  for (let i = stored.length - 1; i >= 0; i--) {
+    const ev = stored[i]!
+    if (ev.type === "engine.usage") {
+      const d = ev.data as { total?: unknown }
+      if (d && typeof d === "object" && d.total && typeof d.total === "object") {
+        const t = d.total as Record<string, unknown>
+        return {
+          promptTokens: numberOr(t.promptTokens, 0),
+          completionTokens: numberOr(t.completionTokens, 0),
+          totalTokens: numberOr(t.totalTokens, 0),
+          callCount: numberOr(t.callCount, 0),
+          costUsd: typeof t.costUsd === "number" ? t.costUsd : undefined,
+        }
+      }
+    }
+  }
+  return { promptTokens: 0, completionTokens: 0, totalTokens: 0, callCount: 0 }
+}
+
+function numberOr(v: unknown, fallback: number): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback
+}
+
 // ─── Skills ────────────────────────────────────────────────────────────────
 const skills = loadSkills()
 let activeSkill: Skill | null = null
+/**
+ * Why the active skill is pinned:
+ *   - "manual": user ran `/skill <name>`; never auto-replaced.
+ *   - "auto":   auto-router matched; may be replaced when a later prompt
+ *               matches a different skill, or cleared when none matches.
+ */
+let activeSkillSource: "manual" | "auto" | null = null
 const skillAutoRoute = config.skills?.autoRoute !== false
 const skillsEnabled = (() => {
   const enabled = config.skills?.enabled
@@ -297,8 +342,9 @@ const skillsEnabled = (() => {
   return new Set(skills.keys())
 })()
 
-function applySkill(skill: Skill | null) {
+function applySkill(skill: Skill | null, source: "manual" | "auto" = "manual") {
   activeSkill = skill
+  activeSkillSource = skill ? source : null
   // The engine's systemPrompt and tool set are fixed at construction. We
   // can't swap them in mid-flight without a new engine — but we DO support
   // it by prepending the skill's prompt as a fresh system message before
@@ -340,17 +386,32 @@ console.log()
 
 let currentRun: AbortController | null = null
 let exiting = false
+let cleaningUp = false
 
 process.on("SIGINT", () => {
   if (currentRun) {
     console.log(ansi.dim("\n[ctrl-c — aborting current run]"))
     currentRun.abort()
   } else {
+    if (cleaningUp) return // a second ctrl-c during shutdown — let it through
     console.log(ansi.dim("\nbye"))
-    cleanup()
-    process.exit(0)
+    void shutdown(0)
   }
 })
+
+async function shutdown(code: number): Promise<never> {
+  if (cleaningUp) {
+    // Re-entrant: someone hit ctrl-c during shutdown. Force exit.
+    process.exit(code)
+  }
+  cleaningUp = true
+  try {
+    await cleanup()
+  } catch (e) {
+    console.error(ansi.red(`shutdown error: ${(e as Error).message}`))
+  }
+  process.exit(code)
+}
 
 async function run() {
   rl.prompt()
@@ -362,14 +423,21 @@ async function run() {
       continue
     }
 
-    // Auto-route to a skill if the input matches and auto-route is enabled
-    // and the user hasn't manually pinned a skill.
-    if (skillAutoRoute && !activeSkill && !input.startsWith("/")) {
+    // Auto-route to a skill on each user prompt unless:
+    //   - auto-route is disabled
+    //   - the user manually pinned a skill via /skill (sticky)
+    //   - the input is itself a slash command (handled separately)
+    // If an auto-pinned skill no longer matches but another one does, we
+    // switch to it; if nothing matches, we clear the auto-pin.
+    if (skillAutoRoute && activeSkillSource !== "manual" && !input.startsWith("/")) {
       const eligible = [...skills.values()].filter((s) => skillsEnabled.has(s.name))
       const matched = findMatchingSkill(input, eligible)
-      if (matched) {
-        applySkill(matched)
+      if (matched && matched.name !== activeSkill?.name) {
+        applySkill(matched, "auto")
         console.log(ansi.dim(`[skill auto-activated: ${matched.name}]`))
+      } else if (!matched && activeSkillSource === "auto") {
+        applySkill(null, "auto")
+        console.log(ansi.dim("[skill auto-cleared: no match]"))
       }
     }
 
@@ -427,14 +495,25 @@ async function run() {
 
     rl.prompt()
   }
-  cleanup()
 }
 
-function cleanup(): void {
+async function cleanup(): Promise<void> {
   sessions.setStatus(engine.sessionId(), "completed")
+  if (fileTracer) {
+    try {
+      await fileTracer.flush()
+    } catch (e) {
+      console.error(ansi.red(`tracer flush failed: ${(e as Error).message}`))
+    }
+  }
+  // Close MCP servers BEFORE closing the sqlite store — MCP managers may
+  // still emit status updates while shutting down.
+  try {
+    await mcpManager.closeAll()
+  } catch (e) {
+    console.error(ansi.red(`mcp shutdown error: ${(e as Error).message}`))
+  }
   store.close()
-  if (fileTracer) void fileTracer.flush()
-  void mcpManager.closeAll()
   rl.close()
 }
 
@@ -442,5 +521,10 @@ function truncate(s: string, max: number): string {
   return s.length > max ? `${s.slice(0, max)}…` : s
 }
 
-await run()
-process.exit(0)
+try {
+  await run()
+} catch (e) {
+  console.error(ansi.red(`fatal: ${(e as Error).message}`))
+  await shutdown(1)
+}
+await shutdown(0)
