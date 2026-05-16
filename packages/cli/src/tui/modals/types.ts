@@ -19,6 +19,7 @@ export type ModalSpec =
   | ConfirmModalSpec
   | HelpModalSpec
   | SessionPickerModalSpec
+  | import("./ToolDetailModal.tsx").ToolDetailModalSpec
 
 export interface ModalCommon<T> {
   /** Unique id (used by Solid's keyed rendering). */

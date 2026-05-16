@@ -5,6 +5,7 @@ import { AskQuestionModal } from "./AskQuestionModal.tsx"
 import { ConfirmModal } from "./ConfirmModal.tsx"
 import { HelpOverlay } from "./HelpOverlay.tsx"
 import { SessionPicker } from "./SessionPicker.tsx"
+import { ToolDetailModal } from "./ToolDetailModal.tsx"
 import type { ModalSpec } from "./types.ts"
 
 /**
@@ -26,5 +27,6 @@ function Dispatch(props: { spec: ModalSpec }) {
     case "confirm":        return <ConfirmModal spec={props.spec} />
     case "help":           return <HelpOverlay spec={props.spec} />
     case "session-picker": return <SessionPicker spec={props.spec} />
+    case "tool-detail":    return <ToolDetailModal spec={props.spec} />
   }
 }

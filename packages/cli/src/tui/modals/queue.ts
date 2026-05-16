@@ -8,6 +8,7 @@ import type {
   HelpModalSpec,
   SessionPickerModalSpec,
 } from "./types.ts"
+import type { ToolDetailModalSpec } from "./ToolDetailModal.tsx"
 
 /**
  * Promise-bound modal stack. UI reads `stack()` to render the top entry.
@@ -24,6 +25,7 @@ export function createModalQueue() {
   function push(spec: Omit<ConfirmModalSpec, "id" | "resolve">): Promise<boolean | null>
   function push(spec: Omit<HelpModalSpec, "id" | "resolve">): Promise<void | null>
   function push(spec: Omit<SessionPickerModalSpec, "id" | "resolve">): Promise<string | null>
+  function push(spec: Omit<ToolDetailModalSpec, "id" | "resolve">): Promise<void | null>
   function push(spec: Omit<ModalSpec, "id" | "resolve">): Promise<unknown> {
     return new Promise((res) => {
       const id = `m-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`

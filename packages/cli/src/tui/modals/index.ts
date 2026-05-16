@@ -11,3 +11,4 @@ export type {
   SessionPickerModalSpec,
   SessionRow,
 } from "./types.ts"
+export type { ToolDetailModalSpec } from "./ToolDetailModal.tsx"
