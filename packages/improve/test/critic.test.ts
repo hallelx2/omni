@@ -74,4 +74,23 @@ describe("Critic", () => {
     const c = await critic.reviewMessages([])
     expect(critic.shouldRetry(c)).toBe(false)
   })
+
+  test("onStructuredFallback fires once when generateObject errors", async () => {
+    const model = new MockAdapter({
+      script: [
+        { kind: "text", text: "VERDICT=ok SCORE=0.9\nISSUES: NONE" },
+        { kind: "text", text: "VERDICT=ok SCORE=0.7\nISSUES: NONE" },
+      ],
+    })
+    const warnings: unknown[] = []
+    const critic = new Critic(model, {
+      useStructuredOutput: true,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      languageModel: { specificationVersion: "v2" } as any,
+      onStructuredFallback: (e) => warnings.push(e),
+    })
+    await critic.reviewMessages([])
+    await critic.reviewMessages([])
+    expect(warnings.length).toBe(1)
+  })
 })

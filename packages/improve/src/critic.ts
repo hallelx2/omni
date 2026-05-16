@@ -21,6 +21,11 @@ export interface CriticOptions {
   readonly languageModel?: any
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly providerOptions?: Record<string, any>
+  /**
+   * Invoked the FIRST time structured-output mode fails and the critic
+   * falls back to text parsing. Subsequent fallbacks are silent.
+   */
+  readonly onStructuredFallback?: (cause: unknown) => void
 }
 
 const CritiqueSchema = z.object({
@@ -30,6 +35,8 @@ const CritiqueSchema = z.object({
 })
 
 export class Critic {
+  private _fallbackWarned = false
+
   constructor(
     private readonly model: ModelAdapter,
     private readonly options: CriticOptions = {},
@@ -66,7 +73,11 @@ Expectation: ${expectation}`
     if (this.options.useStructuredOutput && this.options.languageModel) {
       try {
         return await this._askStructured(userMsg)
-      } catch {
+      } catch (e) {
+        if (!this._fallbackWarned) {
+          this._fallbackWarned = true
+          this.options.onStructuredFallback?.(e)
+        }
         // fall through to text parsing on structured failure
       }
     }

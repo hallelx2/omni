@@ -38,6 +38,13 @@ export interface PlannerOptions {
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly languageModel?: any
+  /**
+   * Invoked the FIRST time structured-output mode fails and the planner
+   * falls back to text parsing. Subsequent fallbacks for the same instance
+   * are silent. Use this to surface a "your model doesn't reliably emit
+   * JSON; falling back to text" warning to the user/log.
+   */
+  readonly onStructuredFallback?: (cause: unknown) => void
 }
 
 const PlanStepSchema = z.object({
@@ -69,6 +76,8 @@ const PlanSchema = z.object({
  *     but requires a model with reliable JSON support.
  */
 export class Planner {
+  private _fallbackWarned = false
+
   constructor(
     private readonly model: ModelAdapter,
     private readonly options: PlannerOptions = {},
@@ -78,7 +87,11 @@ export class Planner {
     if (this.options.useStructuredOutput && this.options.languageModel) {
       try {
         return await this._planStructured(task, tools)
-      } catch {
+      } catch (e) {
+        if (!this._fallbackWarned) {
+          this._fallbackWarned = true
+          this.options.onStructuredFallback?.(e)
+        }
         // fall through to text parsing if structured mode errors
       }
     }

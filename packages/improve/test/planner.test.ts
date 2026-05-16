@@ -75,4 +75,25 @@ describe("Planner", () => {
     expect(rendered).toContain("1. Alpha")
     expect(rendered).toContain("2. Beta")
   })
+
+  test("onStructuredFallback fires once when generateObject errors", async () => {
+    const model = new MockAdapter({
+      script: [
+        { kind: "text", text: "1. step A\n2. step B" },
+        { kind: "text", text: "1. step C" },
+      ],
+    })
+    const warnings: unknown[] = []
+    const planner = new Planner(model, {
+      useStructuredOutput: true,
+      // A "languageModel" object that always throws when generateObject calls
+      // it — simulates a provider that doesn't support structured output.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      languageModel: { specificationVersion: "v2" } as any,
+      onStructuredFallback: (e) => warnings.push(e),
+    })
+    await planner.plan("first")
+    await planner.plan("second")
+    expect(warnings.length).toBe(1) // warned ONCE despite two fallbacks
+  })
 })
