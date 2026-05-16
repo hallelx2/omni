@@ -12,8 +12,7 @@ export function StatusBar(props: { status: StatusState; running: boolean }) {
         backgroundColor: "#1e293b",
       }}
     >
-      <text fg="#06b6d4">⚡ omni</text>
-      <text fg="#475569"> · </text>
+      <text fg="#06b6d4">◆ </text>
       <text fg="#e2e8f0">{props.status.modelName}</text>
 
       <Show when={props.status.profile}>

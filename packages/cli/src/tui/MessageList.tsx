@@ -51,11 +51,15 @@ function MessageRow(props: { m: MessageEntry }) {
 
 function UserMessage(props: { text: string }) {
   return (
-    <box style={{ flexDirection: "column", marginTop: 1, marginBottom: 1 }}>
-      <text fg="#3b82f6">▎you</text>
-      <box style={{ paddingLeft: 2 }}>
-        <text fg="#e2e8f0">{props.text}</text>
-      </box>
+    <box
+      style={{
+        flexDirection: "row",
+        marginTop: 1,
+        marginBottom: 1,
+      }}
+    >
+      <text fg="#3b82f6">┃ </text>
+      <text fg="#e2e8f0">{props.text}</text>
     </box>
   )
 }
@@ -65,21 +69,16 @@ function UserMessage(props: { text: string }) {
 function AssistantMessage(props: { text: string; streaming: boolean; thinking?: string }) {
   return (
     <box style={{ flexDirection: "column", marginTop: 1, marginBottom: 1 }}>
-      <box style={{ flexDirection: "row" }}>
-        <text fg="#a78bfa">▎omni</text>
-        <Show when={props.streaming}>
-          <text fg="#475569"> · streaming…</text>
-        </Show>
-      </box>
       <Show when={props.thinking}>
-        <box style={{ paddingLeft: 2 }}>
-          <text fg="#64748b">{props.thinking}</text>
+        <box style={{ flexDirection: "row", paddingLeft: 0 }}>
+          <text fg="#64748b">  {props.thinking}</text>
         </box>
       </Show>
       <Show when={props.text.length > 0}>
-        <box style={{ paddingLeft: 2 }}>
-          <text fg="#e2e8f0">{props.text}</text>
-        </box>
+        <text fg="#e2e8f0">  {props.text}</text>
+      </Show>
+      <Show when={props.streaming && props.text.length === 0}>
+        <text fg="#475569">  …</text>
       </Show>
     </box>
   )
@@ -91,25 +90,32 @@ function ToolMessage(props: {
   entry: Extract<MessageEntry, { kind: "tool" }>
 }) {
   return (
-    <box style={{ flexDirection: "column", paddingLeft: 2, marginBottom: 1 }}>
+    <box
+      style={{
+        flexDirection: "column",
+        marginTop: 0,
+        marginBottom: 0,
+        paddingLeft: 2,
+      }}
+    >
       <box style={{ flexDirection: "row" }}>
         <text fg={statusColor(props.entry.status)}>{statusIcon(props.entry.status)}</text>
-        <text fg="#94a3b8"> {props.entry.call.name}</text>
+        <text fg="#cbd5e1"> {props.entry.call.name}</text>
+        <text fg="#475569"> {truncate(formatArgs(props.entry.call.args), 80)}</text>
         <Show when={props.entry.durationMs !== undefined}>
-          <text fg="#475569"> · {props.entry.durationMs}ms</text>
+          <text fg="#334155">  · {props.entry.durationMs}ms</text>
         </Show>
       </box>
-      <box style={{ paddingLeft: 2 }}>
-        <text fg="#475569">args: {truncate(JSON.stringify(props.entry.call.args), 160)}</text>
-      </box>
       <Show when={props.entry.resultPreview}>
-        <box style={{ paddingLeft: 2 }}>
-          <text fg="#94a3b8">→ {props.entry.resultPreview}</text>
+        <box style={{ flexDirection: "row", paddingLeft: 2 }}>
+          <text fg="#475569">└ </text>
+          <text fg="#94a3b8">{props.entry.resultPreview}</text>
         </box>
       </Show>
       <Show when={props.entry.errorMessage}>
-        <box style={{ paddingLeft: 2 }}>
-          <text fg="#ef4444">! {props.entry.errorMessage}</text>
+        <box style={{ flexDirection: "row", paddingLeft: 2 }}>
+          <text fg="#475569">└ </text>
+          <text fg="#fca5a5">{props.entry.errorMessage}</text>
         </box>
       </Show>
       <Show when={props.entry.verifiers.length > 0}>
@@ -119,22 +125,35 @@ function ToolMessage(props: {
   )
 }
 
+function formatArgs(args: unknown): string {
+  if (args === null || args === undefined) return ""
+  if (typeof args === "string") return JSON.stringify(args)
+  if (typeof args !== "object") return String(args)
+  const keys = Object.keys(args as Record<string, unknown>)
+  if (keys.length === 0) return ""
+  if (keys.length === 1) {
+    const v = (args as Record<string, unknown>)[keys[0]!]
+    return `${keys[0]}=${typeof v === "string" ? v : JSON.stringify(v)}`
+  }
+  return JSON.stringify(args)
+}
+
 function VerifierStrip(props: { verifiers: readonly VerifierEntry[] }) {
   return (
-    <box style={{ flexDirection: "column", paddingLeft: 2 }}>
+    <box style={{ flexDirection: "column", paddingLeft: 4 }}>
       <For each={props.verifiers}>
         {(v) => (
           <box style={{ flexDirection: "row" }}>
             <text fg={verifierColor(v.status)}>{verifierIcon(v.status)}</text>
-            <text fg="#64748b"> verify:{v.name}</text>
+            <text fg="#64748b"> {v.name}</text>
             <Show when={v.durationMs !== undefined}>
-              <text fg="#334155"> ({v.durationMs}ms)</text>
+              <text fg="#334155"> · {v.durationMs}ms</text>
             </Show>
             <Show when={v.status === "fail" && v.reason}>
-              <text fg="#fca5a5"> — {v.reason}</text>
+              <text fg="#fca5a5">  {v.reason}</text>
             </Show>
             <Show when={v.status === "skip" && v.reason}>
-              <text fg="#64748b"> ({v.reason})</text>
+              <text fg="#475569">  ({v.reason})</text>
             </Show>
           </box>
         )}

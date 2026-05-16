@@ -73,6 +73,7 @@ store.pushEvent({
 render(() => (
   <App
     store={store}
+    cwd={process.cwd()}
     handlers={{
       onSubmit: (text) => {
         store.pushUser(text)

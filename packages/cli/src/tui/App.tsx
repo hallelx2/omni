@@ -1,8 +1,10 @@
-import { createSignal, onCleanup } from "solid-js"
+import { Show, createSignal } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
 import { StatusBar } from "./StatusBar.tsx"
 import { MessageList } from "./MessageList.tsx"
-import { InputBox } from "./InputBox.tsx"
+import { InputBox, SLASH_COMMANDS } from "./InputBox.tsx"
+import { LandingScreen } from "./LandingScreen.tsx"
+import { SlashPopup } from "./SlashPopup.tsx"
 import type { TuiStore } from "./state.ts"
 
 export interface AppHandlers {
@@ -10,59 +12,83 @@ export interface AppHandlers {
   onSubmit: (text: string) => void | Promise<void>
   /** User aborted (ctrl-c during a run). */
   onAbort: () => void
-  /** User quit (ctrl-c when idle, or /quit). */
+  /** User quit (ctrl-c when idle). */
   onQuit: () => void
 }
 
 /**
- * The whole TUI in one frame:
+ * Layout (top → bottom):
  *
- *   ┌──── status bar (1 line, model + pills + tokens) ────┐
- *   ├──── message log (flex-grow scrollbox) ──────────────┤
- *   ├──── footer hints (1 line) ─────────────────────────┤
- *   └──── input box (textarea, 3-6 lines) ───────────────┘
+ *   ┌─ StatusBar  (1 line: ◆ model · probe · skill · tokens · cost) ─┐
+ *   │                                                                 │
+ *   │  LandingScreen (when no messages)   OR   MessageList (scroll)   │
+ *   │                                                                 │
+ *   │  SlashPopup (overlay, only while input starts with "/")         │
+ *   ├─ FooterHints (1 line, context-aware)                            │
+ *   └─ InputBox    (3 lines, bordered)                                │
  *
- * App doesn't own engine state — it reads from the store passed in. That
- * keeps the driver code in bin.tui.ts free to swap implementations
- * (real engine, replay, demo) without rewriting components.
+ * App owns the input value + history so other components can read it
+ * (SlashPopup filters on it; InputBox displays it). Engine wiring lives
+ * in handlers passed in by the driver — App never imports @omni/core.
  */
-export function App(props: { store: TuiStore; handlers: AppHandlers }) {
+export function App(props: { store: TuiStore; handlers: AppHandlers; cwd: string }) {
+  const [inputValue, setInputValue] = createSignal("")
   const [inputHistory, setInputHistory] = createSignal<readonly string[]>([])
+  const showSlashPopup = () => inputValue().startsWith("/")
 
   useKeyboard((ev) => {
     if (ev.ctrl && ev.name === "c") {
       if (props.store.running()) props.handlers.onAbort()
       else props.handlers.onQuit()
+      return
     }
-  })
-
-  onCleanup(() => {
-    // Nothing to clean up here — the driver flushes traces/store/MCP elsewhere.
+    if (ev.name === "escape" && showSlashPopup()) {
+      setInputValue("")
+    }
   })
 
   const onSubmit = (text: string) => {
     setInputHistory((h) => [...h, text].slice(-100))
-    props.handlers.onSubmit(text)
+    setInputValue("")
+    void props.handlers.onSubmit(text)
+  }
+
+  const onSlashComplete = (name: string) => {
+    setInputValue(`/${name} `)
   }
 
   return (
     <box style={{ flexDirection: "column", width: "100%", height: "100%" }}>
       <StatusBar status={props.store.status()} running={props.store.running()} />
 
-      <MessageList messages={props.store.messages()} />
+      <Show
+        when={props.store.messages().length > 0}
+        fallback={<LandingScreen status={props.store.status()} cwd={props.cwd} />}
+      >
+        <MessageList messages={props.store.messages()} />
+      </Show>
 
-      <FooterHints running={props.store.running()} />
+      <Show when={showSlashPopup()}>
+        <SlashPopup
+          query={inputValue()}
+          commands={SLASH_COMMANDS}
+          onComplete={onSlashComplete}
+        />
+      </Show>
+
+      <FooterHints running={props.store.running()} hasInput={inputValue().length > 0} />
 
       <InputBox
+        value={inputValue()}
+        onChange={setInputValue}
         onSubmit={onSubmit}
         disabled={props.store.running()}
-        history={inputHistory()}
       />
     </box>
   )
 }
 
-function FooterHints(props: { running: boolean }) {
+function FooterHints(props: { running: boolean; hasInput: boolean }) {
   return (
     <box
       style={{
@@ -74,8 +100,10 @@ function FooterHints(props: { running: boolean }) {
     >
       <text fg="#475569">
         {props.running
-          ? "● running   ctrl-c abort"
-          : "⏎ send · ↑↓ history · / commands · ctrl-c quit"}
+          ? "● running  ·  ctrl-c to abort"
+          : props.hasInput
+            ? "⏎ send  ·  esc clear  ·  ctrl-c quit"
+            : "⏎ send  ·  / for commands  ·  ctrl-c quit"}
       </text>
     </box>
   )
