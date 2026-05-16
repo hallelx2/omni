@@ -155,6 +155,25 @@ describe("Engine — validation & permissions", () => {
     expect(lastTool?.content.includes("Invalid arguments")).toBe(true)
   })
 
+  test("call to a tool excluded by enabledTools yields tool.invalid with the allowed list", async () => {
+    const script: MockScript[] = [
+      { kind: "tool", name: "echo", args: { text: "x" } },
+      { kind: "text", text: "ok" },
+    ]
+    const engine = new Engine({
+      model: new MockAdapter({ script }),
+      tools: [makeEcho("echo"), makeEcho("other")],
+    })
+    const events = await collect(engine.run("go", { enabledTools: new Set(["other"]) }))
+    const invalid = only(events, "tool.invalid")
+    expect(invalid.length).toBe(1)
+    if (invalid[0]!.type === "tool.invalid") {
+      expect(invalid[0]!.reason).toContain("'echo' is not enabled")
+      expect(invalid[0]!.reason).toContain("allowed: other")
+    }
+    expect(only(events, "tool.result").length).toBe(0)
+  })
+
   test("permission denial emits permission_denied and feeds error", async () => {
     const script: MockScript[] = [
       { kind: "tool", name: "echo", args: { text: "x" } },
