@@ -1,12 +1,14 @@
 import { Show, createSignal } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
-import { StatusBar } from "./StatusBar.tsx"
 import { MessageList } from "./MessageList.tsx"
 import { InputBox, SLASH_COMMANDS } from "./InputBox.tsx"
 import { LandingScreen } from "./LandingScreen.tsx"
 import { SlashPopup } from "./SlashPopup.tsx"
+import { Sidebar } from "./Sidebar.tsx"
+import { FooterStrip } from "./FooterStrip.tsx"
 import { ModalLayer, type ModalQueue } from "./modals/index.ts"
 import { ToastStrip, type ToastStore } from "./Toast.tsx"
+import { theme } from "./theme.ts"
 import type { TuiStore } from "./state.ts"
 
 export interface AppHandlers {
@@ -19,38 +21,49 @@ export interface AppHandlers {
 }
 
 /**
- * Layout (top → bottom):
+ * Layout (opencode-style):
  *
- *   ┌─ StatusBar  (1 line: ◆ model · probe · skill · tokens · cost) ─┐
- *   │                                                                 │
- *   │  LandingScreen (when no messages)   OR   MessageList (scroll)   │
- *   │                                                                 │
- *   │  SlashPopup (overlay, only while input starts with "/")         │
- *   ├─ FooterHints (1 line, context-aware)                            │
- *   └─ InputBox    (3 lines, bordered)                                │
+ *   ┌──────────────────────────────┬──────────────┐
+ *   │                              │              │
+ *   │   MessageList (scrollbox)    │   Sidebar    │
+ *   │   OR LandingScreen           │   (panel)    │
+ *   │                              │              │
+ *   │                              │              │
+ *   │   SlashPopup (overlay above) │              │
+ *   ├──────────────────────────────┤              │
+ *   │   InputBox                   │              │
+ *   ├──────────────────────────────┴──────────────┤
+ *   │   FooterStrip (cwd · pills · hint)          │
+ *   └─────────────────────────────────────────────┘
  *
- * App owns the input value + history so other components can read it
- * (SlashPopup filters on it; InputBox displays it). Engine wiring lives
- * in handlers passed in by the driver — App never imports @omni/core.
+ * No top status bar. The sidebar carries model/profile/cost; the footer
+ * carries cwd + connection state. Background is the root color; the
+ * sidebar gets `theme.backgroundPanel` for contrast.
  */
 export function App(props: {
   store: TuiStore
   handlers: AppHandlers
   cwd: string
+  sessionId: string
   modals: ModalQueue
   toasts: ToastStore
 }) {
   const [inputValue, setInputValue] = createSignal("")
   const [inputHistory, setInputHistory] = createSignal<readonly string[]>([])
+  const [sidebarOpen, setSidebarOpen] = createSignal(true)
   const showSlashPopup = () => inputValue().startsWith("/")
   const hasModal = () => props.modals.top() !== null
+  const hasMessages = () => props.store.messages().length > 0
 
   useKeyboard((ev) => {
-    // When a modal is open let it handle everything (it owns the keyboard).
     if (hasModal()) return
     if (ev.ctrl && ev.name === "c") {
       if (props.store.running()) props.handlers.onAbort()
       else props.handlers.onQuit()
+      return
+    }
+    if (ev.ctrl && ev.name === "b") {
+      setSidebarOpen((b) => !b)
       return
     }
     if (ev.name === "escape" && showSlashPopup()) {
@@ -69,58 +82,61 @@ export function App(props: {
   }
 
   return (
-    <box style={{ flexDirection: "column", width: "100%", height: "100%" }}>
-      <StatusBar status={props.store.status()} running={props.store.running()} />
-
-      <Show
-        when={props.store.messages().length > 0}
-        fallback={<LandingScreen status={props.store.status()} cwd={props.cwd} />}
-      >
-        <MessageList messages={props.store.messages()} />
-      </Show>
-
-      <Show when={showSlashPopup() && !hasModal()}>
-        <SlashPopup
-          query={inputValue()}
-          commands={SLASH_COMMANDS}
-          onComplete={onSlashComplete}
-        />
-      </Show>
-
-      <FooterHints running={props.store.running()} hasInput={inputValue().length > 0} />
-
-      <InputBox
-        value={inputValue()}
-        onChange={setInputValue}
-        onSubmit={onSubmit}
-        disabled={props.store.running()}
-        unfocused={hasModal()}
-      />
-
-      {/* Overlays — drawn absolutely above everything else */}
-      <ToastStrip toasts={props.toasts.toasts()} />
-      <ModalLayer queue={props.modals} />
-    </box>
-  )
-}
-
-function FooterHints(props: { running: boolean; hasInput: boolean }) {
-  return (
     <box
       style={{
-        flexDirection: "row",
-        height: 1,
-        paddingLeft: 1,
-        paddingRight: 1,
+        width: "100%",
+        height: "100%",
+        flexDirection: "column",
+        backgroundColor: theme.background,
       }}
     >
-      <text fg="#475569">
-        {props.running
-          ? "● running  ·  ctrl-c to abort"
-          : props.hasInput
-            ? "⏎ send  ·  esc clear  ·  ctrl-c quit"
-            : "⏎ send  ·  / for commands  ·  ctrl-c quit"}
-      </text>
+      {/* Main row: chat area on the left, sidebar on the right */}
+      <box style={{ flexDirection: "row", flexGrow: 1 }}>
+        <box style={{ flexDirection: "column", flexGrow: 1, paddingLeft: 2, paddingRight: 2 }}>
+          <Show when={hasMessages()} fallback={
+            <LandingScreen status={props.store.status()} cwd={props.cwd} />
+          }>
+            <MessageList messages={props.store.messages()} />
+          </Show>
+
+          {/* Slash popup floats above the input */}
+          <Show when={showSlashPopup() && !hasModal()}>
+            <SlashPopup
+              query={inputValue()}
+              commands={SLASH_COMMANDS}
+              onComplete={onSlashComplete}
+            />
+          </Show>
+
+          <InputBox
+            value={inputValue()}
+            onChange={setInputValue}
+            onSubmit={onSubmit}
+            disabled={props.store.running()}
+            unfocused={hasModal()}
+            running={props.store.running()}
+            modelName={props.store.status().modelName}
+          />
+        </box>
+
+        <Show when={sidebarOpen()}>
+          <Sidebar
+            status={props.store.status()}
+            cwd={props.cwd}
+            sessionId={props.sessionId}
+          />
+        </Show>
+      </box>
+
+      <FooterStrip
+        status={props.store.status()}
+        cwd={props.cwd}
+        running={props.store.running()}
+        hasInput={inputValue().length > 0}
+      />
+
+      <ToastStrip toasts={props.toasts.toasts()} />
+      <ModalLayer queue={props.modals} />
     </box>
   )
 }

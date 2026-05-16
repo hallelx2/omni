@@ -1,6 +1,7 @@
 import { For, Show, createSignal } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
 import { Modal } from "./Modal.tsx"
+import { theme, selectedFg } from "../theme.ts"
 import type { QuestionModalSpec } from "./types.ts"
 
 /**
@@ -43,65 +44,65 @@ export function AskQuestionModal(props: { spec: QuestionModalSpec }) {
   })
 
   return (
-    <Modal title="agent question" accent="#a78bfa" width={84}>
-      <box style={{ paddingLeft: 2 }}>
-        <text fg="#e2e8f0">{props.spec.question}</text>
+    <Modal title="Question from agent" width="large">
+      <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+        <text fg={theme.text}>{props.spec.question}</text>
         <Show when={props.spec.context}>
-          <text fg="#64748b">  {props.spec.context}</text>
+          <text fg={theme.textMuted}>{props.spec.context}</text>
         </Show>
       </box>
       <box style={{ height: 1 }} />
       <Show
         when={!otherMode()}
         fallback={
-          <box style={{ paddingLeft: 2 }}>
-            <text fg="#94a3b8">type your answer · ⏎ submit · esc to go back</text>
-            <text fg="#a78bfa">  › {otherValue() || " "}</text>
+          <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+            <text fg={theme.textMuted}>type your answer · ⏎ submit · esc to go back</text>
             <FreeTextInput value={otherValue()} onChange={setOtherValue} />
           </box>
         }
       >
-        <box style={{ flexDirection: "column", paddingLeft: 2 }}>
+        <box style={{ flexDirection: "column" }}>
           <For each={props.spec.options}>
             {(opt, i) => {
               const isSel = () => i() === selected()
+              const fg = () => (isSel() ? selectedFg(theme.primary) : theme.text)
+              const muted = () => (isSel() ? selectedFg(theme.primary) : theme.textMuted)
               return (
                 <box
                   style={{
                     flexDirection: "column",
-                    backgroundColor: isSel() ? "#1e293b" : "transparent",
-                    paddingLeft: 1,
-                    paddingRight: 1,
+                    paddingLeft: 4,
+                    paddingRight: 4,
+                    backgroundColor: isSel() ? theme.primary : "transparent",
                   }}
                 >
                   <box style={{ flexDirection: "row" }}>
-                    <text fg={isSel() ? "#a78bfa" : "#64748b"}>
-                      {isSel() ? "› " : "  "}
-                    </text>
-                    <text fg="#475569">[{opt.key}]</text>
-                    <text fg={isSel() ? "#e2e8f0" : "#cbd5e1"}> {opt.label}</text>
+                    <text fg={muted()}>{opt.key}</text>
+                    <text fg={fg()}>  {opt.label}</text>
                   </box>
                   <Show when={isSel() && opt.description}>
-                    <text fg="#64748b">      {opt.description}</text>
+                    <text fg={muted()}>     {opt.description}</text>
                   </Show>
                 </box>
               )
             }}
           </For>
           <Show when={allowOther}>
-            <box style={{ flexDirection: "row", paddingLeft: 1, paddingTop: 1 }}>
-              <text fg="#64748b">  [o] </text>
-              <text fg="#64748b">other (type your own)</text>
+            <box style={{ flexDirection: "row", paddingLeft: 4, paddingTop: 1 }}>
+              <text fg={theme.textMuted}>o</text>
+              <text fg={theme.textMuted}>  other (type your own)</text>
             </box>
           </Show>
         </box>
       </Show>
       <box style={{ height: 1 }} />
-      <text fg="#475569">
-        {otherMode()
-          ? "  ⏎ submit · esc go back"
-          : `  ↑↓ navigate · [key] shortcut · ⏎ choose · ${allowOther ? "[o] other · " : ""}esc cancel`}
-      </text>
+      <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+        <text fg={theme.textMuted}>
+          {otherMode()
+            ? "⏎ submit · esc go back"
+            : `↑↓ navigate · [key] shortcut · ⏎ choose · ${allowOther ? "[o] other · " : ""}esc cancel`}
+        </text>
+      </box>
     </Modal>
   )
 }

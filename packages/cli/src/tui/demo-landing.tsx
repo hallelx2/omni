@@ -19,6 +19,7 @@ render(() => (
   <App
     store={store}
     cwd={process.cwd()}
+    sessionId="demo-session-01H0000000000000000000"
     modals={modals}
     toasts={toasts}
     handlers={{

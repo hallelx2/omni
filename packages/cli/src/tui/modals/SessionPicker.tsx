@@ -1,6 +1,7 @@
 import { For, Show, createSignal } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
 import { Modal } from "./Modal.tsx"
+import { theme, selectedFg } from "../theme.ts"
 import type { SessionPickerModalSpec } from "./types.ts"
 
 /**
@@ -22,37 +23,45 @@ export function SessionPicker(props: { spec: SessionPickerModalSpec }) {
   })
 
   return (
-    <Modal title="sessions" subtitle={`${props.spec.rows.length} total · current: ${shortId(props.spec.currentId)}`} width={92}>
-      <Show when={props.spec.rows.length === 0} fallback={null}>
-        <text fg="#64748b">  (no past sessions yet)</text>
+    <Modal
+      title="Sessions"
+      subtitle={`${props.spec.rows.length} total · current ${shortId(props.spec.currentId)}`}
+      width="xlarge"
+    >
+      <Show when={props.spec.rows.length === 0}>
+        <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+          <text fg={theme.textMuted}>(no past sessions yet)</text>
+        </box>
       </Show>
       <box style={{ flexDirection: "column", maxHeight: 14 }}>
         <For each={props.spec.rows.slice(0, 14)}>
           {(row, i) => {
             const isSel = () => i() === selected()
-            const isCurrent = row.id === props.spec.currentId
+            const fg = () => (isSel() ? selectedFg(theme.primary) : theme.text)
+            const muted = () => (isSel() ? selectedFg(theme.primary) : theme.textMuted)
             return (
               <box
                 style={{
                   flexDirection: "row",
-                  backgroundColor: isSel() ? "#1e293b" : "transparent",
-                  paddingLeft: 1,
-                  paddingRight: 1,
+                  paddingLeft: 4,
+                  paddingRight: 4,
+                  backgroundColor: isSel() ? theme.primary : "transparent",
                 }}
               >
-                <text fg={isSel() ? "#06b6d4" : "#475569"}>{isSel() ? "› " : "  "}</text>
-                <text fg={isCurrent ? "#fbbf24" : "#cbd5e1"}>{shortId(row.id)}</text>
-                <text fg="#475569">  {row.model.padEnd(20).slice(0, 20)}</text>
-                <text fg={statusColor(row.status)}>  {row.status.padEnd(10)}</text>
-                <text fg="#64748b">  {row.turns} turns</text>
-                <text fg="#475569">  {formatRelative(row.updatedAt)}</text>
+                <text fg={fg()}>{shortId(row.id)}</text>
+                <text fg={muted()}>  {row.model.padEnd(20).slice(0, 20)}</text>
+                <text fg={statusColor(row.status, isSel())}>  {row.status.padEnd(10)}</text>
+                <text fg={muted()}>  {row.turns} turns</text>
+                <text fg={muted()}>  {formatRelative(row.updatedAt)}</text>
               </box>
             )
           }}
         </For>
       </box>
       <box style={{ height: 1 }} />
-      <text fg="#475569">  ↑↓ navigate · ⏎ resume · [n] new session · esc cancel</text>
+      <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+        <text fg={theme.textMuted}>↑↓ navigate · ⏎ resume · n new session · esc cancel</text>
+      </box>
     </Modal>
   )
 }
@@ -60,11 +69,12 @@ export function SessionPicker(props: { spec: SessionPickerModalSpec }) {
 function shortId(id: string): string {
   return id.slice(-12)
 }
-function statusColor(s: string): string {
-  if (s === "active") return "#10b981"
-  if (s === "completed") return "#64748b"
-  if (s === "aborted") return "#f59e0b"
-  return "#94a3b8"
+function statusColor(s: string, selected: boolean): string {
+  if (selected) return selectedFg(theme.primary)
+  if (s === "active") return theme.success
+  if (s === "completed") return theme.textMuted
+  if (s === "aborted") return theme.warning
+  return theme.text
 }
 function formatRelative(t: number): string {
   const diff = Date.now() - t

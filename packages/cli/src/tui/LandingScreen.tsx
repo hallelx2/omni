@@ -1,69 +1,47 @@
-import { Show } from "solid-js"
+import { theme } from "./theme.ts"
 import type { StatusState } from "./state.ts"
 
+/**
+ * Landing — opencode pattern. A spring at the top, a small brand mark,
+ * a tagline, then the rest flows into the prompt mounted below in App.
+ * The prompt is the focal point — the landing is *deliberately quiet*.
+ */
 export function LandingScreen(props: { status: StatusState; cwd: string }) {
   return (
     <box
       style={{
         flexGrow: 1,
         flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
+        paddingTop: 2,
+        paddingBottom: 2,
+        paddingLeft: 1,
       }}
     >
-      <box style={{ flexDirection: "column", alignItems: "flex-start" }}>
-        <text fg="#06b6d4">◆</text>
-        <box style={{ height: 1 }} />
-        <text fg="#94a3b8">a self-improving agent harness for open models</text>
-
-        <box style={{ height: 1 }} />
-
-        <box style={{ flexDirection: "row" }}>
-          <text fg="#64748b">model </text>
-          <text fg="#e2e8f0">{props.status.modelName}</text>
-          <Show when={props.status.profile}>
-            <text fg="#475569">  ·  </text>
-            <text fg={props.status.profile?.nativeTools ? "#10b981" : "#64748b"}>
-              {props.status.profile?.nativeTools ? "native tools" : "react fallback"}
-            </text>
-            <text fg="#475569">  ·  </text>
-            <text fg={props.status.profile?.follows ? "#10b981" : "#f59e0b"}>
-              {props.status.profile?.follows ? "instruction-following" : "loose"}
-            </text>
-          </Show>
-        </box>
-
-        <box style={{ flexDirection: "row" }}>
-          <text fg="#64748b">cwd   </text>
-          <text fg="#94a3b8">{props.cwd}</text>
-        </box>
-
-        <Show when={props.status.mcpServers > 0}>
-          <box style={{ flexDirection: "row" }}>
-            <text fg="#64748b">mcp   </text>
-            <text fg="#06b6d4">{props.status.mcpServers} server(s) connected</text>
-          </box>
-        </Show>
-
-        <box style={{ height: 1 }} />
-
-        <text fg="#475569">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</text>
-        <box style={{ height: 1 }} />
-
-        <Hint shortcut="/" text="browse commands" />
-        <Hint shortcut="⏎" text="send · ctrl-c to abort or quit" />
-        <Hint shortcut="↑↓" text="cycle previous inputs" />
-      </box>
+      <box style={{ flexGrow: 1 }} />
+      <text fg={theme.primary}>◆</text>
+      <text fg={theme.textMuted}>a self-improving agent harness for open models</text>
+      <box style={{ height: 1 }} />
+      <Stat label="model" value={props.status.modelName} />
+      <Stat label="cwd"   value={shorten(props.cwd, 70)} />
+      <box style={{ height: 1 }} />
+      <text fg={theme.textMuted}>
+        type your request below, or <text fg={theme.text}>/</text>{" "}
+        <text fg={theme.textMuted}>for commands</text>
+      </text>
     </box>
   )
 }
 
-function Hint(props: { shortcut: string; text: string }) {
+function Stat(props: { label: string; value: string }) {
   return (
     <box style={{ flexDirection: "row" }}>
-      <text fg="#a78bfa">{props.shortcut.padEnd(4)}</text>
-      <text fg="#64748b"> {props.text}</text>
+      <text fg={theme.textMuted}>{props.label.padEnd(8)}</text>
+      <text fg={theme.text}>{props.value}</text>
     </box>
   )
 }
 
+function shorten(s: string, max: number): string {
+  if (s.length <= max) return s
+  return `…${s.slice(-(max - 1))}`
+}

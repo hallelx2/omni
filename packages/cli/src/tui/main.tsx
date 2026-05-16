@@ -267,6 +267,7 @@ export async function runTui(): Promise<void> {
     <App
       store={store}
       cwd={process.cwd()}
+      sessionId={deps.engine.sessionId()}
       modals={modals}
       toasts={toasts}
       handlers={{

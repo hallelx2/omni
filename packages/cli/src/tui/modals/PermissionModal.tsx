@@ -1,6 +1,7 @@
 import { useKeyboard } from "@opentui/solid"
 import { Modal } from "./Modal.tsx"
-import type { PermissionDecision, PermissionModalSpec } from "./types.ts"
+import { theme } from "../theme.ts"
+import type { PermissionModalSpec } from "./types.ts"
 
 /**
  * Permission prompt. Tool-grounded keys:
@@ -22,66 +23,45 @@ export function PermissionModal(props: { spec: PermissionModalSpec }) {
     }
   })
 
-  const accent = props.spec.risk ? "#f59e0b" : "#06b6d4"
-
   return (
-    <Modal
-      title={`permission · ${props.spec.toolName}`}
-      subtitle={props.spec.toolDescription}
-      accent={accent}
-      width={84}
-    >
-      <box style={{ flexDirection: "column", paddingLeft: 2 }}>
-        <text fg="#64748b">args</text>
-        <text fg="#cbd5e1">  {props.spec.argsPreview}</text>
+    <Modal title={`Permission · ${props.spec.toolName}`} subtitle={props.spec.toolDescription} width="large">
+      <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+        <text fg={theme.textMuted}>args</text>
+        <text fg={theme.text}>  {props.spec.argsPreview}</text>
         {props.spec.risk ? (
           <>
             <box style={{ height: 1 }} />
             <box style={{ flexDirection: "row" }}>
-              <text fg="#f59e0b">⚠ </text>
-              <text fg="#fbbf24">{props.spec.risk}</text>
+              <text fg={theme.warning}>△ </text>
+              <text fg={theme.warning}>{props.spec.risk}</text>
             </box>
           </>
         ) : null}
       </box>
       <box style={{ height: 1 }} />
-      <Choices
-        items={[
-          { key: "y", label: "allow once",   value: "allow" as const,        accent: "#10b981" },
-          { key: "a", label: "allow always", value: "allow-always" as const, accent: "#34d399" },
-          { key: "n", label: "deny",         value: "deny" as const,         accent: "#ef4444" },
-          { key: "d", label: "deny always",  value: "deny-always" as const,  accent: "#dc2626" },
-        ]}
-      />
+      <box style={{ flexDirection: "row", paddingLeft: 4, paddingRight: 4 }}>
+        <KeyLabel k="y" label="allow once" tone={theme.success} />
+        <Sep />
+        <KeyLabel k="a" label="allow always" tone={theme.success} />
+        <Sep />
+        <KeyLabel k="n" label="deny" tone={theme.error} />
+        <Sep />
+        <KeyLabel k="d" label="deny always" tone={theme.error} />
+      </box>
       <box style={{ height: 1 }} />
-      <text fg="#475569">  ⏎ allow once · esc to deny</text>
+      <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+        <text fg={theme.textMuted}>⏎ allow once · esc to deny</text>
+      </box>
     </Modal>
   )
 }
 
-function Choices(props: {
-  items: ReadonlyArray<{ key: string; label: string; value: PermissionDecision; accent: string }>
-}) {
+function KeyLabel(props: { k: string; label: string; tone: string }) {
   return (
-    <box style={{ flexDirection: "row", paddingLeft: 2 }}>
-      {props.items.map((it, i) => (
-        <>
-          <box
-            style={{
-              flexDirection: "row",
-              paddingLeft: 1,
-              paddingRight: 1,
-              borderStyle: "rounded",
-              borderColor: it.accent,
-              marginRight: 1,
-            }}
-          >
-            <text fg={it.accent}>[{it.key}]</text>
-            <text fg="#e2e8f0"> {it.label}</text>
-          </box>
-          {i < props.items.length - 1 ? null : null}
-        </>
-      ))}
+    <box style={{ flexDirection: "row" }}>
+      <text fg={props.tone}>{props.k}</text>
+      <text fg={theme.textMuted}> {props.label}</text>
     </box>
   )
 }
+function Sep() { return <text fg={theme.textMuted}>   ·   </text> }

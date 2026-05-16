@@ -1,12 +1,9 @@
 import { Show, createSignal } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
 import { Modal } from "./Modal.tsx"
+import { theme, selectedFg } from "../theme.ts"
 import type { ConfirmModalSpec } from "./types.ts"
 
-/**
- * Generic yes/no with focus toggleable via ←→ or tab. Default focus on
- * the confirm side unless `confirmByDefault === false`.
- */
 export function ConfirmModal(props: { spec: ConfirmModalSpec }) {
   const [focusConfirm, setFocusConfirm] = createSignal(props.spec.confirmByDefault !== false)
 
@@ -26,33 +23,36 @@ export function ConfirmModal(props: { spec: ConfirmModalSpec }) {
   const cancelLabel = props.spec.cancelLabel ?? "no"
 
   return (
-    <Modal title={props.spec.title} width={64}>
+    <Modal title={props.spec.title} width="medium">
       <Show when={props.spec.body}>
-        <text fg="#94a3b8">  {props.spec.body}</text>
+        <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+          <text fg={theme.textMuted}>{props.spec.body}</text>
+        </box>
       </Show>
       <box style={{ height: 1 }} />
-      <box style={{ flexDirection: "row", paddingLeft: 2 }}>
-        <ChoiceButton label={confirmLabel} focused={focusConfirm()} accent="#10b981" />
-        <box style={{ width: 2 }} />
-        <ChoiceButton label={cancelLabel} focused={!focusConfirm()} accent="#ef4444" />
+      <box style={{ flexDirection: "row", paddingLeft: 4, paddingRight: 4 }}>
+        <Slab label={confirmLabel} focused={focusConfirm()} />
+        <text fg={theme.textMuted}>  </text>
+        <Slab label={cancelLabel} focused={!focusConfirm()} />
       </box>
       <box style={{ height: 1 }} />
-      <text fg="#475569">  ←→ toggle · ⏎ confirm · y/n shortcuts · esc cancels</text>
+      <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+        <text fg={theme.textMuted}>←→ toggle · ⏎ confirm · y/n shortcuts · esc cancels</text>
+      </box>
     </Modal>
   )
 }
 
-function ChoiceButton(props: { label: string; focused: boolean; accent: string }) {
+function Slab(props: { label: string; focused: boolean }) {
   return (
     <box
       style={{
         paddingLeft: 2,
         paddingRight: 2,
-        borderStyle: "rounded",
-        borderColor: props.focused ? props.accent : "#334155",
+        backgroundColor: props.focused ? theme.primary : theme.backgroundElement,
       }}
     >
-      <text fg={props.focused ? props.accent : "#475569"}>{props.label}</text>
+      <text fg={props.focused ? selectedFg(theme.primary) : theme.text}>{props.label}</text>
     </box>
   )
 }

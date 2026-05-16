@@ -1,18 +1,26 @@
 import type { JSX } from "@opentui/solid"
+import { theme } from "../theme.ts"
 
 /**
- * Centred modal frame with backdrop. Renders absolute so it overlays
- * whatever's beneath. Specific modals (Permission, Question, ...) compose
- * their content inside.
+ * Centred modal — opencode pattern. Scrim 150-alpha, body is a plain
+ * panel-colored rectangle (no borders, no rounded corners), title in
+ * bold-bright with a clickable "esc" hint on the right. Body widths:
+ * 60 / 88 / 116 cols.
  */
 export function Modal(props: {
   title?: string
   subtitle?: string
-  width?: number
-  accent?: string
+  width?: "medium" | "large" | "xlarge" | number
   children?: JSX.Element
 }) {
-  const accent = props.accent ?? "#06b6d4"
+  const w =
+    typeof props.width === "number"
+      ? props.width
+      : props.width === "xlarge"
+        ? 116
+        : props.width === "large"
+          ? 88
+          : 60
   return (
     <box
       style={{
@@ -23,31 +31,32 @@ export function Modal(props: {
         bottom: 0,
         flexDirection: "column",
         alignItems: "center",
-        justifyContent: "center",
-        // semi-transparent backdrop effect via subtle bg
-        backgroundColor: "rgba(0,0,0,0.55)",
+        // Dialogs hang from ~25% down the screen, opencode-style.
+        paddingTop: 4,
+        backgroundColor: "rgba(0,0,0,0.6)",
       }}
     >
       <box
         style={{
           flexDirection: "column",
-          width: props.width ?? 72,
-          borderStyle: "rounded",
-          borderColor: accent,
-          backgroundColor: "#0b1220",
-          paddingLeft: 2,
-          paddingRight: 2,
+          width: w,
+          backgroundColor: theme.backgroundPanel,
           paddingTop: 1,
           paddingBottom: 1,
         }}
       >
         {props.title ? (
-          <box style={{ flexDirection: "row" }}>
-            <text fg={accent}>◆ </text>
-            <text fg="#e2e8f0">{props.title}</text>
+          <box style={{ flexDirection: "row", paddingLeft: 4, paddingRight: 4 }}>
+            <text fg={theme.text}>{props.title}</text>
+            <box style={{ flexGrow: 1 }} />
+            <text fg={theme.textMuted}>esc</text>
           </box>
         ) : null}
-        {props.subtitle ? <text fg="#64748b">  {props.subtitle}</text> : null}
+        {props.subtitle ? (
+          <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+            <text fg={theme.textMuted}>{props.subtitle}</text>
+          </box>
+        ) : null}
         <box style={{ height: 1 }} />
         {props.children}
       </box>

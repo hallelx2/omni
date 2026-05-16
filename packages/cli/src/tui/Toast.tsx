@@ -1,4 +1,5 @@
 import { For, Show, createSignal, onCleanup } from "solid-js"
+import { theme } from "./theme.ts"
 
 export interface ToastEntry {
   readonly id: string
@@ -46,11 +47,9 @@ export function ToastStrip(props: { toasts: readonly ToastEntry[] }) {
             <box
               style={{
                 marginBottom: 1,
-                paddingLeft: 1,
-                paddingRight: 1,
-                borderStyle: "rounded",
-                borderColor: toneBorder(t.tone),
-                backgroundColor: "#0b1220",
+                paddingLeft: 2,
+                paddingRight: 2,
+                backgroundColor: theme.backgroundPanel,
               }}
             >
               <text fg={toneFg(t.tone)}>{toneIcon(t.tone)} {t.text}</text>
@@ -72,17 +71,9 @@ function toneIcon(t: ToastEntry["tone"]): string {
 }
 function toneFg(t: ToastEntry["tone"]): string {
   switch (t) {
-    case "success": return "#10b981"
-    case "warn":    return "#f59e0b"
-    case "error":   return "#ef4444"
-    case "info":    return "#94a3b8"
-  }
-}
-function toneBorder(t: ToastEntry["tone"]): string {
-  switch (t) {
-    case "success": return "#10b981"
-    case "warn":    return "#f59e0b"
-    case "error":   return "#ef4444"
-    case "info":    return "#475569"
+    case "success": return theme.success
+    case "warn":    return theme.warning
+    case "error":   return theme.error
+    case "info":    return theme.text
   }
 }

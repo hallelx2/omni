@@ -1,6 +1,7 @@
 import { For, Show } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
 import { Modal } from "./Modal.tsx"
+import { theme } from "../theme.ts"
 import type { ModalCommon } from "./types.ts"
 import type { MessageEntry, VerifierEntry } from "../state.ts"
 
@@ -22,34 +23,36 @@ export function ToolDetailModal(props: { spec: ToolDetailModalSpec }) {
 
   const e = props.spec.entry
   return (
-    <Modal title={`tool · ${e.call.name}`} subtitle={`status: ${e.status}`} width={92}>
-      <box style={{ paddingLeft: 2, flexDirection: "column" }}>
-        <text fg="#a78bfa">args</text>
-        <text fg="#cbd5e1">  {tryStringify(e.call.args)}</text>
+    <Modal title={`Tool · ${e.call.name}`} subtitle={`status: ${e.status}`} width="xlarge">
+      <box style={{ paddingLeft: 4, paddingRight: 4, flexDirection: "column" }}>
+        <text fg={theme.accent}>args</text>
+        <text fg={theme.text}>  {tryStringify(e.call.args)}</text>
         <Show when={e.resultPreview}>
           <box style={{ height: 1 }} />
-          <text fg="#10b981">result</text>
-          <text fg="#cbd5e1">  {e.resultPreview}</text>
+          <text fg={theme.success}>result</text>
+          <text fg={theme.text}>  {e.resultPreview}</text>
         </Show>
         <Show when={e.errorMessage}>
           <box style={{ height: 1 }} />
-          <text fg="#ef4444">error</text>
-          <text fg="#fca5a5">  {e.errorMessage}</text>
+          <text fg={theme.error}>error</text>
+          <text fg={theme.error}>  {e.errorMessage}</text>
         </Show>
         <Show when={e.verifiers.length > 0}>
           <box style={{ height: 1 }} />
-          <text fg="#06b6d4">verifiers</text>
+          <text fg={theme.info}>verifiers</text>
           <For each={e.verifiers}>
             {(v) => <VerifierRow v={v} />}
           </For>
         </Show>
         <Show when={e.durationMs !== undefined}>
           <box style={{ height: 1 }} />
-          <text fg="#64748b">  duration: {e.durationMs}ms</text>
+          <text fg={theme.textMuted}>duration: {e.durationMs}ms</text>
         </Show>
       </box>
       <box style={{ height: 1 }} />
-      <text fg="#475569">  ⏎ or esc to close</text>
+      <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+        <text fg={theme.textMuted}>⏎ or esc to close</text>
+      </box>
     </Modal>
   )
 }
@@ -59,16 +62,16 @@ function VerifierRow(props: { v: VerifierEntry }) {
     <box style={{ flexDirection: "column", paddingLeft: 2 }}>
       <box style={{ flexDirection: "row" }}>
         <text fg={verifierColor(props.v.status)}>{verifierIcon(props.v.status)}</text>
-        <text fg="#cbd5e1"> {props.v.name}</text>
+        <text fg={theme.text}> {props.v.name}</text>
         <Show when={props.v.durationMs !== undefined}>
-          <text fg="#334155"> · {props.v.durationMs}ms</text>
+          <text fg={theme.textMuted}> · {props.v.durationMs}ms</text>
         </Show>
       </box>
       <Show when={props.v.reason}>
-        <text fg="#94a3b8">    {props.v.reason}</text>
+        <text fg={theme.textMuted}>    {props.v.reason}</text>
       </Show>
       <Show when={props.v.feedback}>
-        <text fg="#64748b">    {props.v.feedback}</text>
+        <text fg={theme.textMuted}>    {props.v.feedback}</text>
       </Show>
     </box>
   )
@@ -84,14 +87,14 @@ function verifierIcon(s: VerifierEntry["status"]): string {
     case "running": return "…"
     case "pass":    return "✓"
     case "fail":    return "✗"
-    case "skip":    return "◌"
+    case "skip":    return "○"
   }
 }
 function verifierColor(s: VerifierEntry["status"]): string {
   switch (s) {
-    case "running": return "#06b6d4"
-    case "pass":    return "#10b981"
-    case "fail":    return "#ef4444"
-    case "skip":    return "#64748b"
+    case "running": return theme.info
+    case "pass":    return theme.success
+    case "fail":    return theme.error
+    case "skip":    return theme.textMuted
   }
 }
