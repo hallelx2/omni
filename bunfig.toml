@@ -1,3 +1,5 @@
+preload = ["@opentui/solid/preload"]
+
 [install]
 # Use exact versions for reproducibility
 exact = false

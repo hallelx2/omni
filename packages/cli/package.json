@@ -15,11 +15,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@omni/core": "workspace:*",
     "@omni/adapters": "workspace:*",
-    "@omni/tools": "workspace:*",
-    "@omni/storage": "workspace:*",
+    "@omni/core": "workspace:*",
     "@omni/improve": "workspace:*",
+    "@omni/storage": "workspace:*",
+    "@omni/tools": "workspace:*",
+    "@opentui/core": "^0.2.12",
+    "@opentui/solid": "^0.2.12",
+    "solid-js": "^1.9.13",
     "ulid": "catalog:",
     "zod": "catalog:"
   },
