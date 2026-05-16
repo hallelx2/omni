@@ -163,6 +163,66 @@ describe("asSubagent", () => {
     expect(result.reason).toBe("aborted")
   })
 
+  test("history=isolate (default) clears non-system messages between calls", async () => {
+    const child = makeChild([
+      { kind: "text", text: "reply 1" },
+      { kind: "text", text: "reply 2" },
+    ])
+    const tool = asSubagent(child, {
+      name: "delegate",
+      description: "",
+      permission: "auto",
+    })
+    const ctx: ToolContext = { cwd: process.cwd(), signal: new AbortController().signal }
+    await tool.execute({ task: "first" }, ctx)
+    const afterFirst = child.history().filter((m) => m.role !== "system").length
+    await tool.execute({ task: "second" }, ctx)
+    const afterSecond = child.history().filter((m) => m.role !== "system").length
+    // Both runs add the same number of non-system messages because the second
+    // run starts isolated (history cleared) rather than appended.
+    expect(afterSecond).toBe(afterFirst)
+  })
+
+  test("history=keep preserves prior turns across calls", async () => {
+    const child = makeChild([
+      { kind: "text", text: "reply 1" },
+      { kind: "text", text: "reply 2" },
+    ])
+    const tool = asSubagent(child, {
+      name: "delegate",
+      description: "",
+      permission: "auto",
+      history: "keep",
+    })
+    const ctx: ToolContext = { cwd: process.cwd(), signal: new AbortController().signal }
+    await tool.execute({ task: "first" }, ctx)
+    const afterFirst = child.history().filter((m) => m.role !== "system").length
+    await tool.execute({ task: "second" }, ctx)
+    const afterSecond = child.history().filter((m) => m.role !== "system").length
+    expect(afterSecond).toBeGreaterThan(afterFirst)
+  })
+
+  test("history={keepLast:N} truncates to N prior non-system messages", async () => {
+    const child = makeChild([
+      { kind: "text", text: "reply 1" },
+      { kind: "text", text: "reply 2" },
+      { kind: "text", text: "reply 3" },
+    ])
+    const tool = asSubagent(child, {
+      name: "delegate",
+      description: "",
+      permission: "auto",
+      history: { keepLast: 1 },
+    })
+    const ctx: ToolContext = { cwd: process.cwd(), signal: new AbortController().signal }
+    await tool.execute({ task: "first" }, ctx)
+    await tool.execute({ task: "second" }, ctx)
+    // After second call: child kept at most 1 prior non-system msg + this run's
+    // (user + assistant) turn. So total non-system = 1 + 2 = 3.
+    const after = child.history().filter((m) => m.role !== "system").length
+    expect(after).toBeLessThanOrEqual(3)
+  })
+
   test("respects child's permission gate (parent grant doesn't override)", async () => {
     const child = new Engine({
       model: new MockAdapter({

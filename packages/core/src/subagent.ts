@@ -49,6 +49,16 @@ export interface SubagentConfig {
    * one to filter or reformat.
    */
   readonly onChildEvent?: (event: EngineEvent, emit: (line: string) => void) => void
+  /**
+   * History retention strategy across successive subagent invocations.
+   *   - "isolate" (default): clear the child's history before each call.
+   *     Each call is a fresh conversation; safest for context window.
+   *   - "keep":    preserve everything. The child grows context turn-by-turn
+   *     until its window overflows; useful for long-lived planning sessions.
+   *   - { keepLast: N }: keep only the last N non-system messages of prior
+   *     calls (system messages always preserved). A middle ground.
+   */
+  readonly history?: "isolate" | "keep" | { readonly keepLast: number }
 }
 
 export interface SubagentResult {
@@ -97,6 +107,8 @@ export function asSubagent(
       const decorate = config.onChildEvent ?? defaultDecorator
       const emit = (line: string) => ctx.onProgress?.(line)
 
+      applyHistoryPolicy(child, config.history ?? "isolate")
+
       for await (const ev of child.run(args.task, { signal: ctx.signal })) {
         if (ev.type === "engine.iteration") iterations = ev.iteration
         if (ev.type === "engine.done") {
@@ -113,4 +125,30 @@ export function asSubagent(
       return { result: text, iterations, reason, tokensUsed }
     },
   }
+}
+
+/**
+ * Apply the configured history-retention policy before a subagent run.
+ *   - "isolate": clear non-system messages; keep system messages intact.
+ *   - "keep":    no-op.
+ *   - {keepLast:N}: keep system + last N non-system messages.
+ */
+function applyHistoryPolicy(
+  child: Engine,
+  policy: NonNullable<SubagentConfig["history"]>,
+): void {
+  if (policy === "keep") return
+
+  const snap = child.snapshot()
+  const system = snap.messages.filter((m) => m.role === "system")
+  let kept = system
+
+  if (typeof policy === "object" && policy.keepLast > 0) {
+    const rest = snap.messages.filter((m) => m.role !== "system")
+    const tail = rest.slice(-policy.keepLast)
+    kept = [...system, ...tail]
+  }
+  // "isolate" falls through with kept === system.
+
+  child.restore({ ...snap, messages: kept })
 }
