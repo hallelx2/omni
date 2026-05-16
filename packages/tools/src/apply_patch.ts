@@ -133,8 +133,14 @@ export const applyPatch: Tool<z.infer<typeof ApplyPatchArgs>, ApplyPatchResult> 
           continue
         }
 
-        const before = await file.text()
-        const { after, added, removed } = applyHunks(before, p.hunks)
+        const beforeRaw = await file.text()
+        // Detect line ending in the source so the rewrite preserves it.
+        // Windows files commonly use CRLF; diff context lines never include
+        // \r, so we normalise to LF for matching and re-encode on write.
+        const eol = detectEol(beforeRaw)
+        const before = eol === "\r\n" ? beforeRaw.replace(/\r\n/g, "\n") : beforeRaw
+        const { after: afterLf, added, removed } = applyHunks(before, p.hunks)
+        const after = eol === "\r\n" ? afterLf.replace(/\n/g, "\r\n") : afterLf
         if (!args.dry_run) await Bun.write(abs, after)
         applied.push({
           path: target,
@@ -142,7 +148,7 @@ export const applyPatch: Tool<z.infer<typeof ApplyPatchArgs>, ApplyPatchResult> 
           added,
           removed,
           action: "modified",
-          diff: summarizeChange(before, after, 2),
+          diff: summarizeChange(before, afterLf, 2),
         })
       } catch (e) {
         failed.push({ path: target, reason: (e as Error).message })
@@ -328,4 +334,14 @@ function hunksToCreatedFile(hunks: readonly Hunk[]): string {
     }
   }
   return out.join("\n")
+}
+
+/**
+ * Detect whether a source string uses CRLF or LF. Defaults to LF when no
+ * line endings are present (a single-line file or empty content).
+ */
+function detectEol(src: string): "\n" | "\r\n" {
+  const firstNl = src.indexOf("\n")
+  if (firstNl <= 0) return "\n"
+  return src[firstNl - 1] === "\r" ? "\r\n" : "\n"
 }

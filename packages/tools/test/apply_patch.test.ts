@@ -138,6 +138,37 @@ describe("applyPatch — modify", () => {
     expect(await readFile(join(dir, "f.txt"), "utf8")).toBe(original)
   })
 
+  test("preserves CRLF line endings when source uses CRLF", async () => {
+    // Windows-style source file: every newline is "\r\n".
+    await writeFile(join(dir, "win.txt"), "alpha\r\nbeta\r\ngamma\r\n")
+    const diff = `--- a/win.txt
++++ b/win.txt
+@@ -1,3 +1,3 @@
+ alpha
+-beta
++BETA
+ gamma`
+    const r = await applyPatch.execute({ patch: diff }, ctx())
+    expect(r.applied).toHaveLength(1)
+    const written = await readFile(join(dir, "win.txt"), "utf8")
+    expect(written).toBe("alpha\r\nBETA\r\ngamma\r\n")
+  })
+
+  test("preserves LF line endings when source uses LF", async () => {
+    await writeFile(join(dir, "u.txt"), "alpha\nbeta\ngamma\n")
+    const diff = `--- a/u.txt
++++ b/u.txt
+@@ -1,3 +1,3 @@
+ alpha
+-beta
++BETA
+ gamma`
+    await applyPatch.execute({ patch: diff }, ctx())
+    const written = await readFile(join(dir, "u.txt"), "utf8")
+    expect(written).toBe("alpha\nBETA\ngamma\n")
+    expect(written).not.toContain("\r")
+  })
+
   test("returns diff summary per file", async () => {
     await writeFile(join(dir, "f.txt"), "alpha\nbeta\ngamma\n")
     const diff = `--- a/f.txt\n+++ b/f.txt\n@@ -1,3 +1,3 @@\n alpha\n-beta\n+BETA\n gamma`
