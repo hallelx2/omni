@@ -71,6 +71,11 @@ export interface BootstrapOptions {
   readonly askHandler?: (tool: { name: string; description: string }, call: { args: unknown }) => Promise<"allow" | "deny">
   /** Print progress to stdout during bootstrap (plain mode). TUI runs silent. */
   readonly verbose?: boolean
+  /**
+   * Extra tools to register on the engine (e.g. surface-specific tools
+   * like ask_user that need access to the TUI's modal queue).
+   */
+  readonly extraTools?: readonly Tool[]
 }
 
 export interface BootstrapResult {
@@ -148,6 +153,7 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
   const tools: readonly Tool[] = [
     bash, readFile, writeFile, edit, multiEdit, applyPatch, glob, grep, webFetch,
     ...mcpManager.tools(),
+    ...(opts.extraTools ?? []),
   ]
 
   // ─── Probe + adapt ──────────────────────────────────────────────────────

@@ -5,6 +5,8 @@ import { MessageList } from "./MessageList.tsx"
 import { InputBox, SLASH_COMMANDS } from "./InputBox.tsx"
 import { LandingScreen } from "./LandingScreen.tsx"
 import { SlashPopup } from "./SlashPopup.tsx"
+import { ModalLayer, type ModalQueue } from "./modals/index.ts"
+import { ToastStrip, type ToastStore } from "./Toast.tsx"
 import type { TuiStore } from "./state.ts"
 
 export interface AppHandlers {
@@ -31,12 +33,21 @@ export interface AppHandlers {
  * (SlashPopup filters on it; InputBox displays it). Engine wiring lives
  * in handlers passed in by the driver — App never imports @omni/core.
  */
-export function App(props: { store: TuiStore; handlers: AppHandlers; cwd: string }) {
+export function App(props: {
+  store: TuiStore
+  handlers: AppHandlers
+  cwd: string
+  modals: ModalQueue
+  toasts: ToastStore
+}) {
   const [inputValue, setInputValue] = createSignal("")
   const [inputHistory, setInputHistory] = createSignal<readonly string[]>([])
   const showSlashPopup = () => inputValue().startsWith("/")
+  const hasModal = () => props.modals.top() !== null
 
   useKeyboard((ev) => {
+    // When a modal is open let it handle everything (it owns the keyboard).
+    if (hasModal()) return
     if (ev.ctrl && ev.name === "c") {
       if (props.store.running()) props.handlers.onAbort()
       else props.handlers.onQuit()
@@ -68,7 +79,7 @@ export function App(props: { store: TuiStore; handlers: AppHandlers; cwd: string
         <MessageList messages={props.store.messages()} />
       </Show>
 
-      <Show when={showSlashPopup()}>
+      <Show when={showSlashPopup() && !hasModal()}>
         <SlashPopup
           query={inputValue()}
           commands={SLASH_COMMANDS}
@@ -83,7 +94,12 @@ export function App(props: { store: TuiStore; handlers: AppHandlers; cwd: string
         onChange={setInputValue}
         onSubmit={onSubmit}
         disabled={props.store.running()}
+        unfocused={hasModal()}
       />
+
+      {/* Overlays — drawn absolutely above everything else */}
+      <ToastStrip toasts={props.toasts.toasts()} />
+      <ModalLayer queue={props.modals} />
     </box>
   )
 }

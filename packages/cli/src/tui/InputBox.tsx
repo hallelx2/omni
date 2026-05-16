@@ -23,6 +23,8 @@ export function InputBox(props: {
   onChange: (v: string) => void
   onSubmit: (text: string) => void
   disabled?: boolean
+  /** Disable input focus (e.g. when a modal is active). */
+  unfocused?: boolean
 }) {
   const submit = (v: string) => {
     const trimmed = v.trim()
@@ -30,12 +32,15 @@ export function InputBox(props: {
     props.onSubmit(trimmed)
   }
 
+  const lineCount = () => Math.min(6, Math.max(1, props.value.split("\n").length))
+  const height = () => lineCount() + 2 // 2 lines for top + bottom border
+
   return (
     <box
       style={{
         borderStyle: "rounded",
         borderColor: props.disabled ? "#334155" : "#475569",
-        height: 3,
+        height: height(),
         paddingLeft: 1,
         paddingRight: 1,
       }}
@@ -52,7 +57,7 @@ export function InputBox(props: {
         // overloads (SubmitEvent and string) — at runtime it's always the
         // string value. Cast keeps the call site readable.
         onSubmit={submit as never}
-        focused={!props.disabled}
+        focused={!props.disabled && !props.unfocused}
       />
     </box>
   )
