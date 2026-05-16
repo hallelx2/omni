@@ -38,6 +38,7 @@ import {
   type ModelAdapter,
   type Tool,
   type Config,
+  type Verifier,
 } from "@omni/core"
 import {
   MockAdapter,
@@ -48,7 +49,10 @@ import {
   OpenAIAdapter,
   GoogleAdapter,
 } from "@omni/adapters"
-import { bash, readFile, writeFile, edit, multiEdit, applyPatch, glob, grep, webFetch, MCPManager } from "@omni/tools"
+import {
+  bash, readFile, writeFile, edit, multiEdit, applyPatch, glob, grep, webFetch, MCPManager,
+  PatchAppliesVerifier, FileParsesVerifier, TypecheckVerifier, TestVerifier,
+} from "@omni/tools"
 import { Storage, SessionsRepo, MessagesRepo, EventsRepo, AuditRepo, ProfilesRepo } from "@omni/storage"
 import {
   FileTracer,
@@ -230,6 +234,39 @@ const baseSystemPrompt =
   activeStrategy?.systemPrompt ??
   "You are Omni, an autonomous coding agent. Use tools to gather information. Be terse. Do not narrate intent before tool use."
 
+// ─── Verifiers (CRITIC pattern) ────────────────────────────────────────────
+// Cheap, always-on built-ins run unless disableBuiltins is set. Expensive
+// ones (typecheck, tests) are opt-in via config so we never silently fork
+// `bun test` in someone's REPL.
+const verifiers: Verifier[] = []
+const vcfg = config.verifiers
+if (!vcfg?.disableBuiltins) {
+  verifiers.push(new PatchAppliesVerifier(), new FileParsesVerifier())
+}
+if (vcfg?.typecheck?.enabled) {
+  verifiers.push(
+    new TypecheckVerifier({
+      command: vcfg.typecheck.command,
+      cwd: vcfg.typecheck.cwd,
+      timeoutMs: vcfg.typecheck.timeoutMs,
+      appliesTo: vcfg.typecheck.appliesTo,
+    }),
+  )
+}
+if (vcfg?.tests?.enabled) {
+  verifiers.push(
+    new TestVerifier({
+      command: vcfg.tests.command,
+      cwd: vcfg.tests.cwd,
+      timeoutMs: vcfg.tests.timeoutMs,
+      appliesTo: vcfg.tests.appliesTo,
+    }),
+  )
+}
+if (verifiers.length > 0) {
+  console.log(ansi.dim(`verifiers: ${verifiers.map((v) => v.name).join(", ")}`))
+}
+
 const engine = new Engine({
   model: adapter,
   tools,
@@ -251,6 +288,7 @@ const engine = new Engine({
     })
   },
   hooks,
+  verifiers,
 })
 
 sessions.create(engine.sessionId(), modelName)

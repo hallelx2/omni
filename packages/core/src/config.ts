@@ -110,6 +110,38 @@ export const ConfigSchema = z.object({
       autoRoute: z.boolean().optional(),
     })
     .optional(),
+
+  /**
+   * Verifiers (CRITIC pattern) run after tools to catch failures without
+   * asking the model to grade itself. Two built-ins are on by default
+   * (cheap); two require config to enable (expensive shells).
+   */
+  verifiers: z
+    .object({
+      /** Disable the cheap built-ins (patch-applies, file-parses). Default: enabled. */
+      disableBuiltins: z.boolean().optional(),
+      /** TypecheckVerifier — runs `tsc --noEmit` (or `command`) after file edits. */
+      typecheck: z
+        .object({
+          enabled: z.boolean().optional(),
+          command: z.string().optional(),
+          cwd: z.string().optional(),
+          timeoutMs: z.number().int().positive().optional(),
+          appliesTo: z.array(z.string()).optional(),
+        })
+        .optional(),
+      /** TestVerifier — runs `bun test` (or `command`) after file edits. */
+      tests: z
+        .object({
+          enabled: z.boolean().optional(),
+          command: z.string().optional(),
+          cwd: z.string().optional(),
+          timeoutMs: z.number().int().positive().optional(),
+          appliesTo: z.array(z.string()).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
 })
 
 export type Config = z.infer<typeof ConfigSchema>

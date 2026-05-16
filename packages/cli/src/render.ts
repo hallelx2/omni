@@ -60,6 +60,21 @@ export function renderEvent(ev: EngineEvent): string {
       return `\n${ansi.bold("done")} ${ansi.gray(`(${ev.reason}, ${ev.durationMs}ms, ${ev.usage.totalTokens} tokens${ev.usage.costUsd ? `, $${ev.usage.costUsd.toFixed(4)}` : ""})`)}\n`
     case "context.compacted":
       return `  ${ansi.gray(`[compaction: ${ev.messagesBefore} → ${ev.messagesAfter}]`)}\n`
+    case "verifier.start":
+      return `     ${ansi.dim(`[verify:${ev.verifier}…]`)}\n`
+    case "verifier.progress":
+      return `       ${ansi.dim("·")} ${ansi.dim(ev.message)}\n`
+    case "verifier.result": {
+      const t = ansi.gray(`${ev.durationMs}ms`)
+      if (ev.status === "pass") {
+        return `     ${ansi.green("✓")} ${ansi.gray(`verify:${ev.verifier}`)} ${t}\n`
+      }
+      if (ev.status === "skip") {
+        return `     ${ansi.gray(`◌ verify:${ev.verifier} skipped`)} ${ev.reason ? ansi.gray(`(${ev.reason})`) : ""}\n`
+      }
+      // fail — show the reason inline so the user knows what tripped
+      return `     ${ansi.red("✗")} ${ansi.red(`verify:${ev.verifier}`)} ${ev.reason ?? ""} ${t}\n`
+    }
     default:
       return ""
   }
