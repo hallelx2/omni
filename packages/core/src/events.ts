@@ -116,6 +116,35 @@ export type EngineEvent =
       readonly durationMs: number
     }
 
+  // ── verifier events ──────────────────────────────────────────────────────
+  /** A verifier began checking a tool result. */
+  | {
+      readonly type: "verifier.start"
+      readonly call: ToolCall
+      readonly verifier: string
+    }
+  /** Long-running verifier progress update (test name being run, etc.). */
+  | {
+      readonly type: "verifier.progress"
+      readonly call: ToolCall
+      readonly verifier: string
+      readonly message: string
+    }
+  /**
+   * Terminal verifier event. `status` is "pass" | "fail" | "skip". On "fail"
+   * the engine has already appended correction feedback to history so the
+   * next iteration sees it; subscribers shouldn't duplicate that.
+   */
+  | {
+      readonly type: "verifier.result"
+      readonly call: ToolCall
+      readonly verifier: string
+      readonly status: "pass" | "fail" | "skip"
+      readonly reason?: string
+      readonly feedback?: string
+      readonly durationMs: number
+    }
+
   // ── context events ───────────────────────────────────────────────────────
   /** Context manager compacted history (e.g. summarization or window drop). */
   | {

@@ -94,6 +94,12 @@ export type { PermissionGate, PermissionDecision, AskHandler } from "./permissio
 export type { ContextStrategy, ContextLimits } from "./context.ts"
 export type { EngineEvent, DoneReason } from "./events.ts"
 
+export {
+  selectApplicableVerifiers,
+  truncateFeedback,
+} from "./verifier.ts"
+export type { Verifier, VerifierResult, VerifyContext } from "./verifier.ts"
+
 // ─── 3. Utilities (helpful when authoring adapters/tools) ──────────────────
 
 export { validateToolCall, toToolSchema, parseReActFallback } from "./validator.ts"

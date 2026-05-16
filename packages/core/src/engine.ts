@@ -29,6 +29,12 @@ import {
   runOnSessionEnd,
   type HookModule,
 } from "./hooks.ts"
+import {
+  selectApplicableVerifiers,
+  truncateFeedback,
+  type Verifier,
+  type VerifierResult,
+} from "./verifier.ts"
 
 /**
  * Configuration passed once at construction. Fields marked optional have
@@ -78,6 +84,16 @@ export interface EngineConfig {
    * and ignored for that call. See {@link HookModule}.
    */
   readonly hooks?: readonly HookModule[]
+  /**
+   * External verifiers (CRITIC pattern). Each runs after a tool produces a
+   * result. A failing verifier injects correction feedback into the next
+   * iteration so the model can self-correct — see {@link Verifier}.
+   *
+   * Cheap, idempotent checks (parse, patch-applied) should always run.
+   * Expensive ones (full test suite, typecheck) should be scoped to
+   * relevant tools via {@link Verifier.appliesTo}.
+   */
+  readonly verifiers?: readonly Verifier[]
 }
 
 /** Options passed per-{@link Engine.run} call. */
@@ -139,6 +155,7 @@ export class Engine {
   private readonly _createdAt = Date.now()
   private _updatedAt = this._createdAt
   private readonly _hooks: readonly HookModule[]
+  private readonly _verifiers: readonly Verifier[]
   private _sessionStartFired = false
 
   constructor(private readonly config: EngineConfig) {
@@ -152,6 +169,7 @@ export class Engine {
     this._env = config.env
     this._enableReActFallback = config.enableReActFallback ?? false
     this._hooks = config.hooks ?? []
+    this._verifiers = config.verifiers ?? []
 
     if (config.systemPrompt) {
       this._ctx.append(makeMessage("system", config.systemPrompt))
@@ -557,7 +575,69 @@ export class Engine {
         const finalResult = await runPostToolUse(this._hooks, tool, effectiveCall, rawResult, toolCtx)
         const durationMs = Date.now() - startedAt
         queue.push({ type: "tool.result", call: effectiveCall, result: finalResult, durationMs })
-        this._ctx.append(makeToolMessage(call.id, formatToolResult(finalResult)))
+
+        // ── verifier pass ────────────────────────────────────────────────
+        // CRITIC pattern: tool-grounded judges run AFTER the tool produces
+        // its result. We collect their feedback and append it to the SAME
+        // tool message as the primary result — providers (OpenAI/Anthropic)
+        // only allow one tool message per tool_call_id, and the model needs
+        // to see both signals in the next iteration.
+        //
+        // Verifier *throws* are treated as skips — a buggy verifier must
+        // never break the run.
+        const failureSections: string[] = []
+        const applicable = selectApplicableVerifiers(this._verifiers, tool.name)
+        for (const v of applicable) {
+          if (toolSignal.aborted) break
+          queue.push({ type: "verifier.start", call: effectiveCall, verifier: v.name })
+          const vStarted = Date.now()
+          let result: VerifierResult
+          try {
+            result = await v.verify({
+              call: effectiveCall,
+              result: finalResult,
+              cwd: this._cwd,
+              signal: toolSignal,
+              env: this._env,
+              onProgress: (message) =>
+                queue.push({
+                  type: "verifier.progress",
+                  call: effectiveCall,
+                  verifier: v.name,
+                  message,
+                }),
+            })
+          } catch (e) {
+            result = {
+              verifier: v.name,
+              status: "skip",
+              reason: `verifier threw: ${e instanceof Error ? e.message : String(e)}`,
+            }
+          }
+          const vDuration = result.durationMs ?? Date.now() - vStarted
+          queue.push({
+            type: "verifier.result",
+            call: effectiveCall,
+            verifier: v.name,
+            status: result.status,
+            reason: result.reason,
+            feedback: result.feedback,
+            durationMs: vDuration,
+          })
+          if (result.status === "fail") {
+            const fb = truncateFeedback(
+              result.feedback ?? result.reason ?? "verification failed",
+            )
+            failureSections.push(`[verifier:${v.name}] FAILED\n${fb}`)
+          }
+        }
+
+        const baseContent = formatToolResult(finalResult)
+        const fullContent =
+          failureSections.length === 0
+            ? baseContent
+            : `${baseContent}\n\n${failureSections.join("\n\n")}`
+        this._ctx.append(makeToolMessage(call.id, fullContent))
       } catch (e) {
         const err = classifyError(e, { providerCode: "tool_failure" })
         const durationMs = Date.now() - startedAt
