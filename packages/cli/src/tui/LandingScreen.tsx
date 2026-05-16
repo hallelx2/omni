@@ -24,10 +24,11 @@ export function LandingScreen(props: { status: StatusState; cwd: string }) {
       <Stat label="model" value={props.status.modelName} />
       <Stat label="cwd"   value={shorten(props.cwd, 70)} />
       <box style={{ height: 1 }} />
-      <text fg={theme.textMuted}>
-        type your request below, or <text fg={theme.text}>/</text>{" "}
-        <text fg={theme.textMuted}>for commands</text>
-      </text>
+      <box style={{ flexDirection: "row" }}>
+        <text fg={theme.textMuted}>type your request below, or </text>
+        <text fg={theme.text}>/</text>
+        <text fg={theme.textMuted}> for commands</text>
+      </box>
     </box>
   )
 }

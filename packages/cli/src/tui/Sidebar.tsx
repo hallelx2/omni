@@ -17,7 +17,7 @@ export function Sidebar(props: {
     <box
       style={{
         width: props.width ?? 42,
-        height: "100%",
+        flexGrow: 1,
         flexDirection: "column",
         backgroundColor: theme.backgroundPanel,
         paddingTop: 1,

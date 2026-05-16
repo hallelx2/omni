@@ -40,12 +40,12 @@ export function SlashPopup(props: {
 
   return (
     <box
+      border={["left"]}
+      borderColor={theme.border}
+      customBorderChars={SplitBorder.chars}
       style={{
         flexDirection: "column",
         backgroundColor: theme.backgroundMenu,
-        border: SplitBorder.sides as never,
-        borderColor: theme.border,
-        customBorderChars: SplitBorder.chars as never,
         marginBottom: 0,
       }}
     >

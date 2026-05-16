@@ -84,8 +84,7 @@ export function App(props: {
   return (
     <box
       style={{
-        width: "100%",
-        height: "100%",
+        flexGrow: 1,
         flexDirection: "column",
         backgroundColor: theme.background,
       }}

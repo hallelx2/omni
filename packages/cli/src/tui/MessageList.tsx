@@ -49,12 +49,12 @@ function MessageRow(props: { m: MessageEntry }) {
 function UserMessage(props: { text: string }) {
   return (
     <box
+      border={["left"]}
+      borderColor={theme.primary}
+      customBorderChars={SplitBorder.chars}
       style={{
         marginTop: 1,
         marginBottom: 1,
-        border: SplitBorder.sides as never,
-        borderColor: theme.primary,
-        customBorderChars: SplitBorder.chars as never,
         backgroundColor: theme.backgroundPanel,
         paddingTop: 1,
         paddingBottom: 1,

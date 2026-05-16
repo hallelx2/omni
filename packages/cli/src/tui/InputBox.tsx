@@ -46,6 +46,9 @@ export function InputBox(props: {
     <box style={{ flexDirection: "column", marginTop: 1, marginBottom: 1 }}>
       {/* Input itself, with SplitBorder on left */}
       <box
+        border={["left"]}
+        borderColor={props.running ? theme.warning : theme.borderActive}
+        customBorderChars={PromptBorder.chars}
         style={{
           flexDirection: "column",
           paddingLeft: 1,
@@ -53,9 +56,6 @@ export function InputBox(props: {
           paddingTop: 1,
           paddingBottom: 1,
           backgroundColor: theme.backgroundElement,
-          border: PromptBorder.sides as never,
-          borderColor: props.running ? theme.warning : theme.borderActive,
-          customBorderChars: PromptBorder.chars as never,
         }}
       >
         <input
