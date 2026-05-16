@@ -36,3 +36,16 @@ export type { MCPClientConfig, StdioMCPConfig, HTTPMCPConfig } from "./mcp.ts"
 
 export { MCPManager } from "./mcp-manager.ts"
 export type { MCPServerState, MCPServerStatus } from "./mcp-manager.ts"
+
+// ── Verifiers (CRITIC pattern) ────────────────────────────────────────────
+export {
+  PatchAppliesVerifier,
+  FileParsesVerifier,
+  TypecheckVerifier,
+  TestVerifier,
+  runShellVerifier,
+} from "./verifiers/index.ts"
+export type {
+  TypecheckVerifierOptions,
+  TestVerifierOptions,
+} from "./verifiers/index.ts"
