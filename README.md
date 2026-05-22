@@ -109,29 +109,64 @@ True streaming • abort propagation through model + tools • loop detection by
 
 ---
 
-## 🚀 Quick start
+## 🚀 Install
+
+**One-liner** (downloads the prebuilt binary, installs to `~/.omni/bin`, wires PATH):
 
 ```bash
-# 1. Clone
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/hallelx2/omni/main/install.sh | bash
+```
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/hallelx2/omni/main/install.ps1 | iex
+```
+
+Then drop your key in `~/.omni/.env` and run `omni`:
+
+```bash
+echo 'MIMO_API_KEY=tp-...' >> ~/.omni/.env
+omni                  # full TUI
+omni --plain          # plain readline REPL (pipes / CI)
+```
+
+With `MIMO_API_KEY` present, Omni auto-selects the MiMo adapter — no
+`OMNI_ADAPTER` needed.
+
+### Build & install from source
+
+```bash
 git clone https://github.com/hallelx2/omni.git && cd omni
 bun install
-
-# 2. Run with the default mock adapter
-bun run dev
-
-# 3. Or point it at a real model (see provider matrix below)
-OMNI_ADAPTER=mimo MIMO_API_KEY=tp-... bun run dev
+bun run setup         # build host binary → ~/.omni/bin/omni + wire PATH
 ```
 
-### Try every surface
+Or just build without installing:
 
 ```bash
-bun run dev        # interactive CLI (this is the main experience)
-bun run server     # HTTP + WebSocket server on :8088
-bun run web        # browser client on :3000 (with embedded server)
-bun test           # 305 tests
-bun run typecheck  # all 11 packages
+bun run build         # → packages/cli/dist/omni[.exe]  (host platform)
+bun run build:all     # all platforms (win/linux/mac × x64/arm64)
 ```
+
+### Run from source (no build)
+
+```bash
+bun run dev           # interactive TUI
+OMNI_ADAPTER=mimo bun run dev
+bun run dev --plain   # readline REPL
+bun test              # test suite
+bun run typecheck     # all packages
+```
+
+### Publish a release
+
+```bash
+gh auth login
+bun run release v0.1.0   # build:all + create GitHub release with binaries
+```
+
+This uploads assets named `omni-<plat>-<arch>` so the install one-liners
+above can fetch them.
 
 ---
 
