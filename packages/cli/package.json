@@ -12,6 +12,8 @@
   },
   "scripts": {
     "start": "bun run src/bin.ts",
+    "build": "bun run build.ts",
+    "build:all": "bun run build.ts all",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

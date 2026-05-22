@@ -7,7 +7,6 @@
  * sessions.
  */
 import { resolve, dirname } from "node:path"
-import { fileURLToPath } from "node:url"
 import { mkdirSync } from "node:fs"
 import {
   Engine,
@@ -109,12 +108,14 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
   const log = opts.verbose ? (line: string) => console.log(line) : () => {}
 
   // ─── Setup: home dir, .env, config ───────────────────────────────────────
-  const __filename = fileURLToPath(import.meta.url)
-  const workspaceRoot = resolve(dirname(__filename), "..", "..", "..")
-  loadDotenv([resolve(workspaceRoot, ".env"), resolve(process.cwd(), ".env")])
-
   ensureOmniHome()
   const paths = omniPaths()
+  // .env precedence (later wins via loadDotenv overriding): repo .env (dev) <
+  // cwd .env (per-project) < ~/.omni/.env (per-user, used by the compiled
+  // binary which has no repo-relative path). When running from source,
+  // `import.meta.dir` points at packages/cli/src; the repo root is 3 up.
+  const repoEnv = resolve(import.meta.dir, "..", "..", "..", ".env")
+  loadDotenv([repoEnv, resolve(process.cwd(), ".env"), resolve(paths.home, ".env")])
   const wsPaths = workspacePaths()
   setFrontmatterParser((raw) => {
     const r = parseFrontmatter(raw)
@@ -306,7 +307,12 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
 // ─── Adapter pick ──────────────────────────────────────────────────────────
 
 function pickAdapter(config: Config): { adapter: ModelAdapter; name: string } {
-  const which = (process.env.OMNI_ADAPTER ?? config.adapter ?? "mock").toLowerCase()
+  // Default chain: explicit env > config > auto-detect MiMo from key > mock.
+  // The auto-detect means a fresh `omni` with MIMO_API_KEY set just works,
+  // without anyone having to remember OMNI_ADAPTER=mimo.
+  const autoDetected =
+    !process.env.OMNI_ADAPTER && !config.adapter && resolveApiKey("mimo", config) ? "mimo" : undefined
+  const which = (process.env.OMNI_ADAPTER ?? config.adapter ?? autoDetected ?? "mock").toLowerCase()
   const defaultModel = process.env.OMNI_MODEL ?? config.model
 
   switch (which) {

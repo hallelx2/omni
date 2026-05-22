@@ -7,6 +7,8 @@
   "packageManager": "bun@1.2.21",
   "scripts": {
     "dev": "bun run --cwd packages/cli src/bin.ts",
+    "build": "bun run packages/cli/build.ts",
+    "build:all": "bun run packages/cli/build.ts all",
     "server": "bun run --cwd packages/server src/bin.ts",
     "web": "bun run --cwd packages/web src/serve-dev.ts",
     "typecheck": "bun run scripts/typecheck.ts",
