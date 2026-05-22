@@ -25,18 +25,18 @@ export function ConfirmModal(props: { spec: ConfirmModalSpec }) {
   return (
     <Modal title={props.spec.title} width="medium">
       <Show when={props.spec.body}>
-        <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+        <box paddingLeft={4} paddingRight={4}>
           <text fg={theme.textMuted}>{props.spec.body}</text>
         </box>
       </Show>
-      <box style={{ height: 1 }} />
-      <box style={{ flexDirection: "row", paddingLeft: 4, paddingRight: 4 }}>
+      <box height={1} />
+      <box flexDirection="row" paddingLeft={4} paddingRight={4}>
         <Slab label={confirmLabel} focused={focusConfirm()} />
         <text fg={theme.textMuted}>  </text>
         <Slab label={cancelLabel} focused={!focusConfirm()} />
       </box>
-      <box style={{ height: 1 }} />
-      <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+      <box height={1} />
+      <box paddingLeft={4} paddingRight={4}>
         <text fg={theme.textMuted}>←→ toggle · ⏎ confirm · y/n shortcuts · esc cancels</text>
       </box>
     </Modal>
@@ -45,13 +45,7 @@ export function ConfirmModal(props: { spec: ConfirmModalSpec }) {
 
 function Slab(props: { label: string; focused: boolean }) {
   return (
-    <box
-      style={{
-        paddingLeft: 2,
-        paddingRight: 2,
-        backgroundColor: props.focused ? theme.primary : theme.backgroundElement,
-      }}
-    >
+    <box paddingLeft={2} paddingRight={2} backgroundColor={props.focused ? theme.primary : theme.backgroundElement}>
       <text fg={props.focused ? selectedFg(theme.primary) : theme.text}>{props.label}</text>
     </box>
   )

@@ -25,21 +25,21 @@ export function PermissionModal(props: { spec: PermissionModalSpec }) {
 
   return (
     <Modal title={`Permission · ${props.spec.toolName}`} subtitle={props.spec.toolDescription} width="large">
-      <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+      <box paddingLeft={4} paddingRight={4}>
         <text fg={theme.textMuted}>args</text>
         <text fg={theme.text}>  {props.spec.argsPreview}</text>
         {props.spec.risk ? (
           <>
-            <box style={{ height: 1 }} />
-            <box style={{ flexDirection: "row" }}>
+            <box height={1} />
+            <box flexDirection="row">
               <text fg={theme.warning}>△ </text>
               <text fg={theme.warning}>{props.spec.risk}</text>
             </box>
           </>
         ) : null}
       </box>
-      <box style={{ height: 1 }} />
-      <box style={{ flexDirection: "row", paddingLeft: 4, paddingRight: 4 }}>
+      <box height={1} />
+      <box flexDirection="row" paddingLeft={4} paddingRight={4}>
         <KeyLabel k="y" label="allow once" tone={theme.success} />
         <Sep />
         <KeyLabel k="a" label="allow always" tone={theme.success} />
@@ -48,8 +48,8 @@ export function PermissionModal(props: { spec: PermissionModalSpec }) {
         <Sep />
         <KeyLabel k="d" label="deny always" tone={theme.error} />
       </box>
-      <box style={{ height: 1 }} />
-      <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+      <box height={1} />
+      <box paddingLeft={4} paddingRight={4}>
         <text fg={theme.textMuted}>⏎ allow once · esc to deny</text>
       </box>
     </Modal>
@@ -58,7 +58,7 @@ export function PermissionModal(props: { spec: PermissionModalSpec }) {
 
 function KeyLabel(props: { k: string; label: string; tone: string }) {
   return (
-    <box style={{ flexDirection: "row" }}>
+    <box flexDirection="row">
       <text fg={props.tone}>{props.k}</text>
       <text fg={theme.textMuted}> {props.label}</text>
     </box>

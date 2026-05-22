@@ -12,7 +12,7 @@ export function HelpOverlay(props: { spec: HelpModalSpec }) {
 
   return (
     <Modal title="Help" subtitle="keys · slash commands · shortcuts" width="large">
-      <box style={{ flexDirection: "row", paddingLeft: 4, paddingRight: 4 }}>
+      <box flexDirection="row" paddingLeft={4} paddingRight={4}>
         <Column
           heading="keys"
           rows={[
@@ -24,7 +24,7 @@ export function HelpOverlay(props: { spec: HelpModalSpec }) {
             ["ctrl+c",    "abort run · second tap quits"],
           ]}
         />
-        <box style={{ width: 4 }} />
+        <box width={4} />
         <Column
           heading="commands"
           rows={[
@@ -43,8 +43,8 @@ export function HelpOverlay(props: { spec: HelpModalSpec }) {
           ]}
         />
       </box>
-      <box style={{ height: 1 }} />
-      <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+      <box height={1} />
+      <box paddingLeft={4} paddingRight={4}>
         <text fg={theme.textMuted}>⏎ or esc to close</text>
       </box>
     </Modal>
@@ -56,11 +56,11 @@ function Column(props: {
   rows: ReadonlyArray<readonly [string, string]>
 }) {
   return (
-    <box style={{ flexDirection: "column" }}>
+    <box flexDirection="column">
       <text fg={theme.accent}>{props.heading}</text>
-      <box style={{ height: 1 }} />
+      <box height={1} />
       {props.rows.map(([k, v]) => (
-        <box style={{ flexDirection: "row" }}>
+        <box flexDirection="row">
           <text fg={theme.text}>{k.padEnd(20)}</text>
           <text fg={theme.textMuted}>{v}</text>
         </box>

@@ -24,33 +24,33 @@ export function ToolDetailModal(props: { spec: ToolDetailModalSpec }) {
   const e = props.spec.entry
   return (
     <Modal title={`Tool · ${e.call.name}`} subtitle={`status: ${e.status}`} width="xlarge">
-      <box style={{ paddingLeft: 4, paddingRight: 4, flexDirection: "column" }}>
+      <box paddingLeft={4} paddingRight={4} flexDirection="column">
         <text fg={theme.accent}>args</text>
         <text fg={theme.text}>  {tryStringify(e.call.args)}</text>
         <Show when={e.resultPreview}>
-          <box style={{ height: 1 }} />
+          <box height={1} />
           <text fg={theme.success}>result</text>
           <text fg={theme.text}>  {e.resultPreview}</text>
         </Show>
         <Show when={e.errorMessage}>
-          <box style={{ height: 1 }} />
+          <box height={1} />
           <text fg={theme.error}>error</text>
           <text fg={theme.error}>  {e.errorMessage}</text>
         </Show>
         <Show when={e.verifiers.length > 0}>
-          <box style={{ height: 1 }} />
+          <box height={1} />
           <text fg={theme.info}>verifiers</text>
           <For each={e.verifiers}>
             {(v) => <VerifierRow v={v} />}
           </For>
         </Show>
         <Show when={e.durationMs !== undefined}>
-          <box style={{ height: 1 }} />
+          <box height={1} />
           <text fg={theme.textMuted}>duration: {e.durationMs}ms</text>
         </Show>
       </box>
-      <box style={{ height: 1 }} />
-      <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+      <box height={1} />
+      <box paddingLeft={4} paddingRight={4}>
         <text fg={theme.textMuted}>⏎ or esc to close</text>
       </box>
     </Modal>
@@ -59,8 +59,8 @@ export function ToolDetailModal(props: { spec: ToolDetailModalSpec }) {
 
 function VerifierRow(props: { v: VerifierEntry }) {
   return (
-    <box style={{ flexDirection: "column", paddingLeft: 2 }}>
-      <box style={{ flexDirection: "row" }}>
+    <box flexDirection="column" paddingLeft={2}>
+      <box flexDirection="row">
         <text fg={verifierColor(props.v.status)}>{verifierIcon(props.v.status)}</text>
         <text fg={theme.text}> {props.v.name}</text>
         <Show when={props.v.durationMs !== undefined}>

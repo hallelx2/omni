@@ -29,25 +29,18 @@ export function SessionPicker(props: { spec: SessionPickerModalSpec }) {
       width="xlarge"
     >
       <Show when={props.spec.rows.length === 0}>
-        <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+        <box paddingLeft={4} paddingRight={4}>
           <text fg={theme.textMuted}>(no past sessions yet)</text>
         </box>
       </Show>
-      <box style={{ flexDirection: "column", maxHeight: 14 }}>
+      <box flexDirection="column" maxHeight={14}>
         <For each={props.spec.rows.slice(0, 14)}>
           {(row, i) => {
             const isSel = () => i() === selected()
             const fg = () => (isSel() ? selectedFg(theme.primary) : theme.text)
             const muted = () => (isSel() ? selectedFg(theme.primary) : theme.textMuted)
             return (
-              <box
-                style={{
-                  flexDirection: "row",
-                  paddingLeft: 4,
-                  paddingRight: 4,
-                  backgroundColor: isSel() ? theme.primary : "transparent",
-                }}
-              >
+              <box flexDirection="row" paddingLeft={4} paddingRight={4} backgroundColor={isSel() ? theme.primary : "transparent"}>
                 <text fg={fg()}>{shortId(row.id)}</text>
                 <text fg={muted()}>  {row.model.padEnd(20).slice(0, 20)}</text>
                 <text fg={statusColor(row.status, isSel())}>  {row.status.padEnd(10)}</text>
@@ -58,8 +51,8 @@ export function SessionPicker(props: { spec: SessionPickerModalSpec }) {
           }}
         </For>
       </box>
-      <box style={{ height: 1 }} />
-      <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+      <box height={1} />
+      <box paddingLeft={4} paddingRight={4}>
         <text fg={theme.textMuted}>↑↓ navigate · ⏎ resume · n new session · esc cancel</text>
       </box>
     </Modal>

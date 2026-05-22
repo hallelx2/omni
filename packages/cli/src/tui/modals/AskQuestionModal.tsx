@@ -45,38 +45,31 @@ export function AskQuestionModal(props: { spec: QuestionModalSpec }) {
 
   return (
     <Modal title="Question from agent" width="large">
-      <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+      <box paddingLeft={4} paddingRight={4}>
         <text fg={theme.text}>{props.spec.question}</text>
         <Show when={props.spec.context}>
           <text fg={theme.textMuted}>{props.spec.context}</text>
         </Show>
       </box>
-      <box style={{ height: 1 }} />
+      <box height={1} />
       <Show
         when={!otherMode()}
         fallback={
-          <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+          <box paddingLeft={4} paddingRight={4}>
             <text fg={theme.textMuted}>type your answer · ⏎ submit · esc to go back</text>
             <FreeTextInput value={otherValue()} onChange={setOtherValue} />
           </box>
         }
       >
-        <box style={{ flexDirection: "column" }}>
+        <box flexDirection="column">
           <For each={props.spec.options}>
             {(opt, i) => {
               const isSel = () => i() === selected()
               const fg = () => (isSel() ? selectedFg(theme.primary) : theme.text)
               const muted = () => (isSel() ? selectedFg(theme.primary) : theme.textMuted)
               return (
-                <box
-                  style={{
-                    flexDirection: "column",
-                    paddingLeft: 4,
-                    paddingRight: 4,
-                    backgroundColor: isSel() ? theme.primary : "transparent",
-                  }}
-                >
-                  <box style={{ flexDirection: "row" }}>
+                <box flexDirection="column" paddingLeft={4} paddingRight={4} backgroundColor={isSel() ? theme.primary : "transparent"}>
+                  <box flexDirection="row">
                     <text fg={muted()}>{opt.key}</text>
                     <text fg={fg()}>  {opt.label}</text>
                   </box>
@@ -88,15 +81,15 @@ export function AskQuestionModal(props: { spec: QuestionModalSpec }) {
             }}
           </For>
           <Show when={allowOther}>
-            <box style={{ flexDirection: "row", paddingLeft: 4, paddingTop: 1 }}>
+            <box flexDirection="row" paddingLeft={4} paddingTop={1}>
               <text fg={theme.textMuted}>o</text>
               <text fg={theme.textMuted}>  other (type your own)</text>
             </box>
           </Show>
         </box>
       </Show>
-      <box style={{ height: 1 }} />
-      <box style={{ paddingLeft: 4, paddingRight: 4 }}>
+      <box height={1} />
+      <box paddingLeft={4} paddingRight={4}>
         <text fg={theme.textMuted}>
           {otherMode()
             ? "⏎ submit · esc go back"
