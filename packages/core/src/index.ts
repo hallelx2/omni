@@ -110,6 +110,9 @@ export type { ClassifiedError, ErrorCategory, ClassifyHints } from "./util/error
 
 export { safeStringify } from "./util/safe-json.ts"
 
+export { OMNI_SYSTEM_PROMPT, buildSystemPrompt } from "./system-prompt.ts"
+export type { BuildPromptOptions } from "./system-prompt.ts"
+
 export { AsyncQueue } from "./util/async-queue.ts"
 export { combineSignals, mergeStreams, sleep } from "./util/streams.ts"
 

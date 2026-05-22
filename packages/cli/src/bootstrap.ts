@@ -22,6 +22,7 @@ import {
   workspacePaths,
   resolveApiKey,
   resolveBaseURL,
+  buildSystemPrompt,
   type ModelAdapter,
   type Tool,
   type Config,
@@ -182,10 +183,19 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
   }
 
   // ─── Engine ─────────────────────────────────────────────────────────────
+  // Comprehensive system prompt composed with the live context (cwd, the
+  // actual tool set, the active verifiers) and the probed model's tuning
+  // (ReAct format if no native tool calls; stronger terseness if verbose).
+  // A user-set config.systemPrompt overrides the whole thing.
   const baseSystemPrompt =
     config.systemPrompt ??
-    activeStrategy?.systemPrompt ??
-    "You are Omni, an autonomous coding agent. Use tools to gather information. Be terse. Do not narrate intent before tool use."
+    buildSystemPrompt({
+      cwd: process.cwd(),
+      tools: tools.map((t) => ({ name: t.name, description: t.description })),
+      verifiers: verifiers.map((v) => v.name),
+      nativeToolCalls: activeProfile?.nativeToolCalls ?? true,
+      verbose: activeProfile?.verboseByDefault ?? false,
+    })
 
   const engine = new Engine({
     model: adapter,
