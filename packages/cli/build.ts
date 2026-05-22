@@ -66,7 +66,28 @@ async function build(target: string, outfile: string): Promise<void> {
 const arg = process.argv[2]
 
 if (arg === "all") {
-  for (const t of ALL_TARGETS) await build(t, outfileForMulti(t))
+  // opentui ships per-platform NATIVE modules (@opentui/core-<os>-<arch>)
+  // that are only installed for the host. Cross-compiling to another OS
+  // from one machine therefore can't resolve the target's native package
+  // and fails. We continue past those so the host target still builds;
+  // full cross-platform release is done on a CI matrix (one runner per OS).
+  const failed: string[] = []
+  for (const t of ALL_TARGETS) {
+    try {
+      await build(t, outfileForMulti(t))
+    } catch {
+      failed.push(t)
+      console.log(`  ${t}: skipped (native module for this target not installed — build on a ${t} runner)`)
+    }
+  }
+  if (failed.length === ALL_TARGETS.length) {
+    console.error("all targets failed")
+    process.exit(1)
+  }
+  if (failed.length > 0) {
+    console.log(`\nbuilt ${ALL_TARGETS.length - failed.length}/${ALL_TARGETS.length}. Skipped: ${failed.join(", ")}`)
+    console.log("Full cross-platform binaries are produced by the CI release matrix.")
+  }
 } else {
   const target = arg ?? HOST
   await build(target, outfileFor(target))
