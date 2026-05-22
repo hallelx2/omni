@@ -1,6 +1,6 @@
 import { resolve, dirname } from "node:path"
 import { mkdir, appendFile } from "node:fs/promises"
-import type { EngineEvent } from "@omni/core"
+import { safeStringify, type EngineEvent } from "@omni/core"
 
 /**
  * One line per event in JSONL. A trace file represents one session run.
@@ -39,7 +39,7 @@ export class FileTracer {
    * the background. Use {@link flush} to await all pending writes.
    */
   record(event: EngineEvent): void {
-    const line = JSON.stringify({ t: Date.now(), e: event } satisfies TraceLine) + "\n"
+    const line = safeStringify({ t: Date.now(), e: event } satisfies TraceLine) + "\n"
     this._pending = this._pending
       .then(() => this.ensureDir())
       .then(() => appendFile(this.opts.path, line))

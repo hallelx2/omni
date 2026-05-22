@@ -1,5 +1,6 @@
 import { Show, createSignal } from "solid-js"
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
+import type { ScrollBoxRenderable } from "@opentui/core"
 import { MessageList } from "./MessageList.tsx"
 import { InputBox, SLASH_COMMANDS } from "./InputBox.tsx"
 import { LandingScreen } from "./LandingScreen.tsx"
@@ -47,6 +48,9 @@ export function App(props: {
   const hasModal = () => props.modals.top() !== null
   const hasMessages = () => props.store.messages().length > 0
 
+  let scrollBox: ScrollBoxRenderable | undefined
+  const pageStep = () => Math.max(1, Math.floor((scrollBox?.height ?? 20) / 2))
+
   useKeyboard((ev) => {
     if (hasModal()) return
     if (ev.ctrl && ev.name === "c") {
@@ -56,6 +60,21 @@ export function App(props: {
     }
     if (ev.ctrl && ev.name === "b") {
       setSidebarOpen((b) => !b)
+      return
+    }
+    // Scroll the transcript. PageUp/PageDown + vim-style ctrl+u / ctrl+d.
+    // (Plain arrows are left for the input cursor / history.)
+    if (ev.name === "pageup" || (ev.ctrl && ev.name === "u")) {
+      scrollBox?.scrollBy(-pageStep())
+      return
+    }
+    if (ev.name === "pagedown" || (ev.ctrl && ev.name === "d")) {
+      scrollBox?.scrollBy(pageStep())
+      return
+    }
+    if (ev.ctrl && ev.name === "g") {
+      // jump to bottom
+      if (scrollBox) scrollBox.scrollTo(scrollBox.scrollHeight)
       return
     }
     if (ev.name === "escape" && showSlashPopup()) {
@@ -83,7 +102,10 @@ export function App(props: {
             when={hasMessages()}
             fallback={<LandingScreen status={props.store.status()} cwd={props.cwd} />}
           >
-            <MessageList messages={props.store.messages()} />
+            <MessageList
+              messages={props.store.messages()}
+              onScrollRef={(r) => (scrollBox = r)}
+            />
           </Show>
 
           <Show when={showSlashPopup() && !hasModal()}>

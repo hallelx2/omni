@@ -263,20 +263,28 @@ export async function runTui(): Promise<void> {
   })
 
   // ─── Mount the TUI ───────────────────────────────────────────────────────
-  await render(() => (
-    <App
-      store={store}
-      cwd={process.cwd()}
-      sessionId={deps.engine.sessionId()}
-      modals={modals}
-      toasts={toasts}
-      handlers={{
-        onSubmit: handleSubmit,
-        onAbort: handleAbort,
-        onQuit: () => void shutdown(0),
-      }}
-    />
-  ))
+  // Mouse is OFF by default so the terminal's own click-drag selection /
+  // copy keeps working. Keyboard scroll (pgup/pgdn, ctrl+u/d) works either
+  // way. Set OMNI_MOUSE=1 to enable wheel-scroll (then use shift+drag for
+  // native selection, which most terminals still honor).
+  const useMouse = process.env.OMNI_MOUSE === "1"
+  await render(
+    () => (
+      <App
+        store={store}
+        cwd={process.cwd()}
+        sessionId={deps.engine.sessionId()}
+        modals={modals}
+        toasts={toasts}
+        handlers={{
+          onSubmit: handleSubmit,
+          onAbort: handleAbort,
+          onQuit: () => void shutdown(0),
+        }}
+      />
+    ),
+    { useMouse },
+  )
 }
 
 function previewArgs(args: unknown): string {

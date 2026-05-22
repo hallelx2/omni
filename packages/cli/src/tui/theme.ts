@@ -1,3 +1,5 @@
+import { SyntaxStyle } from "@opentui/core"
+
 /**
  * Theme tokens — adopting opencode's theme schema verbatim so we can
  * cross-import community theme files later. Default theme below is a
@@ -163,6 +165,43 @@ export const EmptyBorderChars = {
   ...splitBorderChars,
   vertical: "╹",
 } as const
+
+/**
+ * Lazily-built SyntaxStyle for the markdown / code renderers. opentui's
+ * <markdown> requires one; it colours headings, code, links, etc. Built
+ * from the active theme's markdown tokens. Created on first use (after
+ * the renderer's FFI is initialised) and cached.
+ */
+let _syntax: SyntaxStyle | undefined
+export function syntaxStyle(): SyntaxStyle {
+  if (_syntax) return _syntax
+  try {
+    _syntax = SyntaxStyle.fromStyles({
+      default:               { fg: theme.markdownText },
+      "markup.heading":      { fg: theme.markdownHeading, bold: true },
+      "markup.bold":         { fg: theme.markdownStrong, bold: true },
+      "markup.italic":       { fg: theme.markdownEmphasis, italic: true },
+      "markup.raw":          { fg: theme.markdownCode },
+      "markup.raw.inline":   { fg: theme.markdownCode },
+      "markup.quote":        { fg: theme.markdownBlockquote, italic: true },
+      "markup.list":         { fg: theme.markdownBullet },
+      "markup.link":         { fg: theme.markdownLink, underline: true },
+      "markup.link.label":   { fg: theme.info },
+      comment:               { fg: theme.textMuted, italic: true },
+      keyword:               { fg: theme.accent },
+      string:                { fg: theme.success },
+      number:                { fg: theme.warning },
+      function:              { fg: theme.markdownLink },
+      type:                  { fg: theme.info },
+      variable:             { fg: theme.markdownText },
+      punctuation:           { fg: theme.textMuted },
+    })
+  } catch {
+    // FFI not ready or fromStyles unsupported — fall back to a plain style.
+    _syntax = SyntaxStyle.create()
+  }
+  return _syntax
+}
 
 /**
  * Choose a readable foreground on top of a theme.primary slab.

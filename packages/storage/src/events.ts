@@ -1,3 +1,4 @@
+import { safeStringify } from "@omni/core"
 import type { Storage } from "./db.ts"
 
 export interface StoredEvent {
@@ -11,9 +12,12 @@ export class EventsRepo {
   constructor(private readonly store: Storage) {}
 
   append(e: StoredEvent): void {
+    // safeStringify: events can carry classified errors whose `.cause`
+    // holds the original Error with circular refs — plain JSON.stringify
+    // throws on those and would crash the tracer.
     this.store.db
       .query("INSERT INTO events (session_id, t, type, data_json) VALUES (?, ?, ?, ?)")
-      .run(e.session_id, e.t, e.type, JSON.stringify(e.data))
+      .run(e.session_id, e.t, e.type, safeStringify(e.data))
   }
 
   bySession(sessionId: string, opts: { readonly limit?: number } = {}): readonly StoredEvent[] {

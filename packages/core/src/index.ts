@@ -108,6 +108,8 @@ export type { ValidationResult } from "./validator.ts"
 export { classifyError } from "./util/errors.ts"
 export type { ClassifiedError, ErrorCategory, ClassifyHints } from "./util/errors.ts"
 
+export { safeStringify } from "./util/safe-json.ts"
+
 export { AsyncQueue } from "./util/async-queue.ts"
 export { combineSignals, mergeStreams, sleep } from "./util/streams.ts"
 

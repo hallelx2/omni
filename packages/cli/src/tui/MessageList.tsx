@@ -1,10 +1,21 @@
 import { For, Show } from "solid-js"
-import { SplitBorder, theme } from "./theme.ts"
+import type { ScrollBoxRenderable } from "@opentui/core"
+import { SplitBorder, theme, syntaxStyle } from "./theme.ts"
 import type { MessageEntry, VerifierEntry } from "./state.ts"
 
-export function MessageList(props: { messages: readonly MessageEntry[] }) {
+export function MessageList(props: {
+  messages: readonly MessageEntry[]
+  onScrollRef?: (r: ScrollBoxRenderable) => void
+}) {
   return (
-    <scrollbox flexGrow={1} paddingTop={1} paddingBottom={1} stickyScroll stickyStart="bottom">
+    <scrollbox
+      ref={(r: ScrollBoxRenderable) => props.onScrollRef?.(r)}
+      flexGrow={1}
+      paddingTop={1}
+      paddingBottom={1}
+      stickyScroll
+      stickyStart="bottom"
+    >
       <For each={props.messages}>{(m) => <MessageRow m={m} />}</For>
     </scrollbox>
   )
@@ -67,8 +78,16 @@ function AssistantMessage(props: { text: string; streaming: boolean; thinking?: 
         </box>
       </Show>
       <Show when={props.text.length > 0}>
-        <box paddingLeft={3}>
-          <text fg={theme.text}>{props.text}</text>
+        <box paddingLeft={3} flexShrink={0}>
+          <markdown
+            content={props.text}
+            syntaxStyle={syntaxStyle()}
+            streaming={props.streaming}
+            internalBlockMode="top-level"
+            tableOptions={{ style: "grid" }}
+            fg={theme.markdownText}
+            bg={theme.background}
+          />
         </box>
       </Show>
       <Show when={props.streaming && props.text.length === 0}>

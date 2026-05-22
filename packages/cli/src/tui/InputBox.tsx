@@ -80,7 +80,7 @@ export function InputBox(props: {
               <text fg={theme.textMuted}>{props.modelName ?? "model"}</text>
             </box>
             <box flexDirection="row" gap={1}>
-              <text fg={theme.textMuted}>ctrl+b sidebar · / commands · ctrl+c quit</text>
+              <text fg={theme.textMuted}>pgup/pgdn scroll · ctrl+b sidebar · / commands · ctrl+c quit</text>
             </box>
           </box>
         </box>
