@@ -4,15 +4,7 @@ import type { MessageEntry, VerifierEntry } from "./state.ts"
 
 export function MessageList(props: { messages: readonly MessageEntry[] }) {
   return (
-    <scrollbox
-      style={{
-        flexGrow: 1,
-        paddingTop: 1,
-        paddingBottom: 1,
-      }}
-      stickyScroll
-      stickyStart="bottom"
-    >
+    <scrollbox flexGrow={1} paddingTop={1} paddingBottom={1} stickyScroll stickyStart="bottom">
       <For each={props.messages}>{(m) => <MessageRow m={m} />}</For>
     </scrollbox>
   )
@@ -44,46 +36,43 @@ function MessageRow(props: { m: MessageEntry }) {
   )
 }
 
-// ─── User (left bar + panel bg, no label) ─────────────────────────────────
+// ─── User: left bar (primary) + panel bg, no label ─────────────────────────
 
 function UserMessage(props: { text: string }) {
   return (
     <box
-      border={["left"]}
+      {...SplitBorder}
       borderColor={theme.primary}
-      customBorderChars={SplitBorder.chars}
-      style={{
-        marginTop: 1,
-        marginBottom: 1,
-        backgroundColor: theme.backgroundPanel,
-        paddingTop: 1,
-        paddingBottom: 1,
-        paddingLeft: 2,
-        paddingRight: 2,
-      }}
+      backgroundColor={theme.backgroundPanel}
+      marginTop={1}
+      marginBottom={1}
+      paddingTop={1}
+      paddingBottom={1}
+      paddingLeft={2}
+      paddingRight={2}
     >
       <text fg={theme.text}>{props.text}</text>
     </box>
   )
 }
 
-// ─── Assistant (paddingLeft 3, no label, no border) ───────────────────────
+// ─── Assistant: paddingLeft 3, no label, no border ─────────────────────────
 
 function AssistantMessage(props: { text: string; streaming: boolean; thinking?: string }) {
   return (
-    <box style={{ flexDirection: "column", marginTop: 1, marginBottom: 1 }}>
+    <box flexDirection="column" marginTop={1} marginBottom={1}>
       <Show when={props.thinking}>
-        <box style={{ paddingLeft: 3 }}>
+        <box paddingLeft={3}>
           <text fg={theme.textMuted}>▶ {props.thinking}</text>
         </box>
       </Show>
       <Show when={props.text.length > 0}>
-        <box style={{ paddingLeft: 3 }}>
+        <box paddingLeft={3}>
           <text fg={theme.text}>{props.text}</text>
         </box>
       </Show>
       <Show when={props.streaming && props.text.length === 0}>
-        <box style={{ paddingLeft: 3 }}>
+        <box paddingLeft={3}>
           <text fg={theme.textMuted}>…</text>
         </box>
       </Show>
@@ -91,12 +80,12 @@ function AssistantMessage(props: { text: string; streaming: boolean; thinking?: 
   )
 }
 
-// ─── Tool (inline icon + name + args + verifier strip) ────────────────────
+// ─── Tool: inline icon + name + args, verifier strip below ─────────────────
 
 function ToolMessage(props: { entry: Extract<MessageEntry, { kind: "tool" }> }) {
   return (
-    <box style={{ flexDirection: "column", paddingLeft: 3, marginBottom: 0 }}>
-      <box style={{ flexDirection: "row" }}>
+    <box flexDirection="column" paddingLeft={3}>
+      <box flexDirection="row">
         <text fg={statusColor(props.entry.status)}>{statusIcon(props.entry.status)} </text>
         <text fg={theme.text}>{props.entry.call.name}</text>
         <text fg={theme.textMuted}>  {truncate(formatArgs(props.entry.call.args), 80)}</text>
@@ -119,10 +108,10 @@ function ToolMessage(props: { entry: Extract<MessageEntry, { kind: "tool" }> }) 
 
 function VerifierStrip(props: { verifiers: readonly VerifierEntry[] }) {
   return (
-    <box style={{ flexDirection: "column", paddingLeft: 4 }}>
+    <box flexDirection="column" paddingLeft={4}>
       <For each={props.verifiers}>
         {(v) => (
-          <box style={{ flexDirection: "row" }}>
+          <box flexDirection="row">
             <text fg={verifierColor(v.status)}>{verifierIcon(v.status)}</text>
             <text fg={theme.textMuted}> {v.name}</text>
             <Show when={v.durationMs !== undefined}>
@@ -141,11 +130,11 @@ function VerifierStrip(props: { verifiers: readonly VerifierEntry[] }) {
   )
 }
 
-// ─── System (small muted line) ─────────────────────────────────────────────
+// ─── System ────────────────────────────────────────────────────────────────
 
 function SystemMessage(props: { text: string; tone: "info" | "warn" | "error" | "dim" }) {
   return (
-    <box style={{ paddingLeft: 3, marginTop: 0 }}>
+    <box paddingLeft={3}>
       <text fg={toneColor(props.tone)}>{tonePrefix(props.tone)} {props.text}</text>
     </box>
   )
@@ -187,7 +176,6 @@ function statusColor(s: Extract<MessageEntry, { kind: "tool" }>["status"]): stri
     case "pending": return theme.textMuted
   }
 }
-
 function verifierIcon(s: VerifierEntry["status"]): string {
   switch (s) {
     case "running": return "…"
@@ -204,7 +192,6 @@ function verifierColor(s: VerifierEntry["status"]): string {
     case "skip":    return theme.textMuted
   }
 }
-
 function toneColor(t: "info" | "warn" | "error" | "dim"): string {
   switch (t) {
     case "info":  return theme.textMuted
@@ -221,7 +208,6 @@ function tonePrefix(t: "info" | "warn" | "error" | "dim"): string {
     case "dim":   return "·"
   }
 }
-
 function truncate(s: string, max: number): string {
   return s.length > max ? `${s.slice(0, max)}…` : s
 }

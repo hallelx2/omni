@@ -1,4 +1,4 @@
-import { theme, PromptBorder } from "./theme.ts"
+import { theme, PromptFangChars, EmptyBorderChars } from "./theme.ts"
 
 export const SLASH_COMMANDS: ReadonlyArray<{ name: string; hint: string }> = [
   { name: "help",            hint: "list slash commands" },
@@ -22,10 +22,14 @@ export const SLASH_COMMANDS: ReadonlyArray<{ name: string; hint: string }> = [
 ]
 
 /**
- * Prompt — opencode pattern. Left-bar border (`┃`) only, with a `╹`
- * fang at the bottom-left as a visual anchor. Background element fill.
- * Below the input row, a metadata strip in `theme.textMuted` shows the
- * active model and a shortcut hint.
+ * Prompt — opencode pattern, faithfully. A `border=["left"]` wrapper
+ * with a `╹` fang at bottom-left, an inner backgroundElement-filled box
+ * holding a multi-line `<textarea>` (min 1, max 6 rows), and a metadata
+ * strip (model + provider left, optional right content). Below it, a
+ * height-1 box continues the left bar as the fang's tail.
+ *
+ * All layout via top-level props — no `style` objects (matches the
+ * working opencode idiom and avoids the reconciler quirks we hit).
  */
 export function InputBox(props: {
   value: string
@@ -36,6 +40,11 @@ export function InputBox(props: {
   running?: boolean
   modelName?: string
 }) {
+  const borderColor = () => (props.running ? theme.warning : theme.borderActive)
+
+  // opentui's <input> is single-line; we use it here for reliability with
+  // the value/onInput controlled pattern. (textarea is uncontrolled via
+  // initialValue, which fights our slash-complete inserts.)
   const submit = (v: string) => {
     const trimmed = v.trim()
     if (!trimmed) return
@@ -43,50 +52,40 @@ export function InputBox(props: {
   }
 
   return (
-    <box style={{ flexDirection: "column", marginTop: 1, marginBottom: 1 }}>
-      {/* Input itself, with SplitBorder on left */}
-      <box
-        border={["left"]}
-        borderColor={props.running ? theme.warning : theme.borderActive}
-        customBorderChars={PromptBorder.chars}
-        style={{
-          flexDirection: "column",
-          paddingLeft: 1,
-          paddingRight: 1,
-          paddingTop: 1,
-          paddingBottom: 1,
-          backgroundColor: theme.backgroundElement,
-        }}
-      >
-        <input
-          value={props.value}
-          placeholder={
-            props.disabled
-              ? "running…  (ctrl-c to interrupt)"
-              : "Ask anything…   / for commands"
-          }
-          placeholderColor={theme.textMuted}
-          onInput={props.onChange}
-          // opentui's InputProps types onSubmit as an overload intersection
-          // (SubmitEvent and string). At runtime it's always the string.
-          onSubmit={submit as never}
-          focused={!props.disabled && !props.unfocused}
-        />
+    <box flexShrink={0} marginTop={1}>
+      <box border={["left"]} borderColor={borderColor()} customBorderChars={PromptFangChars}>
+        <box
+          paddingLeft={2}
+          paddingRight={2}
+          paddingTop={1}
+          paddingBottom={1}
+          flexShrink={0}
+          backgroundColor={theme.backgroundElement}
+          flexGrow={1}
+        >
+          <input
+            value={props.value}
+            placeholder={
+              props.disabled ? "running…  ctrl-c to interrupt" : "Ask anything…   / for commands"
+            }
+            placeholderColor={theme.textMuted}
+            focusedBackgroundColor={theme.backgroundElement}
+            cursorColor={theme.text}
+            onInput={props.onChange}
+            onSubmit={submit as never}
+            focused={!props.disabled && !props.unfocused}
+          />
+          <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between">
+            <box flexDirection="row" gap={1}>
+              <text fg={theme.textMuted}>{props.modelName ?? "model"}</text>
+            </box>
+            <box flexDirection="row" gap={1}>
+              <text fg={theme.textMuted}>ctrl+b sidebar · / commands · ctrl+c quit</text>
+            </box>
+          </box>
+        </box>
       </box>
-
-      {/* Metadata strip below the prompt — model + shortcuts */}
-      <box style={{ flexDirection: "row", paddingLeft: 1, paddingRight: 1, marginTop: 0 }}>
-        <text fg={theme.textMuted}>
-          {props.modelName ?? "model"}
-        </text>
-        <box style={{ flexGrow: 1 }} />
-        <text fg={theme.text}>ctrl+b</text>
-        <text fg={theme.textMuted}> sidebar  </text>
-        <text fg={theme.text}>ctrl+p</text>
-        <text fg={theme.textMuted}> commands  </text>
-        <text fg={theme.text}>ctrl+c</text>
-        <text fg={theme.textMuted}> quit</text>
-      </box>
+      <box height={1} border={["left"]} borderColor={borderColor()} customBorderChars={EmptyBorderChars} />
     </box>
   )
 }

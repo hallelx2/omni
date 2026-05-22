@@ -34,24 +34,10 @@ export type ToastStore = ReturnType<typeof createToastStore>
 export function ToastStrip(props: { toasts: readonly ToastEntry[] }) {
   return (
     <Show when={props.toasts.length > 0}>
-      <box
-        style={{
-          position: "absolute",
-          top: 2,
-          right: 2,
-          flexDirection: "column",
-        }}
-      >
+      <box position="absolute" top={1} right={2} flexDirection="column" zIndex={2000}>
         <For each={props.toasts.slice(-4)}>
           {(t) => (
-            <box
-              style={{
-                marginBottom: 1,
-                paddingLeft: 2,
-                paddingRight: 2,
-                backgroundColor: theme.backgroundPanel,
-              }}
-            >
+            <box marginBottom={1} paddingLeft={2} paddingRight={2} backgroundColor={theme.backgroundPanel}>
               <text fg={toneFg(t.tone)}>{toneIcon(t.tone)} {t.text}</text>
             </box>
           )}

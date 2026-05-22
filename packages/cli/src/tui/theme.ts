@@ -124,38 +124,44 @@ export const omniLight: Theme = {
 export const theme: Theme = omniDark
 
 /**
- * SplitBorder — opencode's signature chrome. Use as
- *   <box border={SplitBorder.sides} customBorderChars={SplitBorder.chars}>
- * Renders only a left-edge vertical bar with no horizontal sides.
+ * Border character set with no horizontal edges — only the vertical bar
+ * is drawn. opencode's signature chrome.
  */
-export const SplitBorder = {
-  sides: ["left"] as const,
-  chars: {
-    topLeft:     " ",
-    topRight:    " ",
-    bottomLeft:  " ",
-    bottomRight: " ",
-    horizontal:  " ",
-    vertical:    "┃",
-    topT:        " ",
-    bottomT:     " ",
-    leftT:       " ",
-    rightT:      " ",
-    cross:       " ",
-  } as const,
+const splitBorderChars = {
+  topLeft:     " ",
+  topRight:    " ",
+  bottomLeft:  " ",
+  bottomRight: " ",
+  horizontal:  " ",
+  vertical:    "┃",
+  topT:        " ",
+  bottomT:     " ",
+  leftT:       " ",
+  rightT:      " ",
+  cross:       " ",
 } as const
 
 /**
- * SplitBorder for the prompt — the only place that uses the "fang"
- * connector at the bottom-left, so users see a thin tick under the
- * input that hints the input is anchored to the next section above.
+ * SplitBorder — spread onto a `<box>` to get a left-edge vertical bar:
+ *   <box {...SplitBorder} borderColor={theme.primary}>
  */
-export const PromptBorder = {
-  sides: ["left"] as const,
-  chars: {
-    ...SplitBorder.chars,
-    bottomLeft: "╹",
-  } as const,
+export const SplitBorder = {
+  border: ["left"] as ("left" | "right" | "top" | "bottom")[],
+  customBorderChars: splitBorderChars,
+} as const
+
+/**
+ * Border char set for the prompt's bottom "fang" extension box.
+ */
+export const PromptFangChars = {
+  ...splitBorderChars,
+  bottomLeft: "╹",
+} as const
+
+/** Empty border chars (used by the prompt's height-1 extension). */
+export const EmptyBorderChars = {
+  ...splitBorderChars,
+  vertical: "╹",
 } as const
 
 /**

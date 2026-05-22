@@ -1,5 +1,5 @@
 import { Show, createSignal } from "solid-js"
-import { useKeyboard } from "@opentui/solid"
+import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
 import { MessageList } from "./MessageList.tsx"
 import { InputBox, SLASH_COMMANDS } from "./InputBox.tsx"
 import { LandingScreen } from "./LandingScreen.tsx"
@@ -12,33 +12,24 @@ import { theme } from "./theme.ts"
 import type { TuiStore } from "./state.ts"
 
 export interface AppHandlers {
-  /** User submitted text. Implementer drives engine/commands and pushes events into the store. */
   onSubmit: (text: string) => void | Promise<void>
-  /** User aborted (ctrl-c during a run). */
   onAbort: () => void
-  /** User quit (ctrl-c when idle). */
   onQuit: () => void
 }
 
 /**
- * Layout (opencode-style):
+ * Root — opencode pattern. Explicit terminal dimensions on the root box
+ * (not flexGrow / "100%"), top-level box props everywhere (no `style`
+ * objects), and the layout:
  *
- *   ┌──────────────────────────────┬──────────────┐
- *   │                              │              │
- *   │   MessageList (scrollbox)    │   Sidebar    │
- *   │   OR LandingScreen           │   (panel)    │
- *   │                              │              │
- *   │                              │              │
- *   │   SlashPopup (overlay above) │              │
- *   ├──────────────────────────────┤              │
- *   │   InputBox                   │              │
- *   ├──────────────────────────────┴──────────────┤
- *   │   FooterStrip (cwd · pills · hint)          │
- *   └─────────────────────────────────────────────┘
- *
- * No top status bar. The sidebar carries model/profile/cost; the footer
- * carries cwd + connection state. Background is the root color; the
- * sidebar gets `theme.backgroundPanel` for contrast.
+ *   root (column, full terminal)
+ *   ├─ body (row, flexGrow 1, minHeight 0)
+ *   │   ├─ chat column (flexGrow 1)
+ *   │   │   ├─ MessageList / LandingScreen (flexGrow 1)
+ *   │   │   ├─ SlashPopup (when typing /)
+ *   │   │   └─ InputBox
+ *   │   └─ Sidebar (width 42)
+ *   └─ FooterStrip (flexShrink 0)
  */
 export function App(props: {
   store: TuiStore
@@ -48,6 +39,7 @@ export function App(props: {
   modals: ModalQueue
   toasts: ToastStore
 }) {
+  const dimensions = useTerminalDimensions()
   const [inputValue, setInputValue] = createSignal("")
   const [inputHistory, setInputHistory] = createSignal<readonly string[]>([])
   const [sidebarOpen, setSidebarOpen] = createSignal(true)
@@ -76,29 +68,24 @@ export function App(props: {
     setInputValue("")
     void props.handlers.onSubmit(text)
   }
-
-  const onSlashComplete = (name: string) => {
-    setInputValue(`/${name} `)
-  }
+  const onSlashComplete = (name: string) => setInputValue(`/${name} `)
 
   return (
     <box
-      style={{
-        flexGrow: 1,
-        flexDirection: "column",
-        backgroundColor: theme.background,
-      }}
+      width={dimensions().width}
+      height={dimensions().height}
+      flexDirection="column"
+      backgroundColor={theme.background}
     >
-      {/* Main row: chat area on the left, sidebar on the right */}
-      <box style={{ flexDirection: "row", flexGrow: 1 }}>
-        <box style={{ flexDirection: "column", flexGrow: 1, paddingLeft: 2, paddingRight: 2 }}>
-          <Show when={hasMessages()} fallback={
-            <LandingScreen status={props.store.status()} cwd={props.cwd} />
-          }>
+      <box flexGrow={1} minHeight={0} flexDirection="row">
+        <box flexGrow={1} minHeight={0} flexDirection="column" paddingLeft={2} paddingRight={2}>
+          <Show
+            when={hasMessages()}
+            fallback={<LandingScreen status={props.store.status()} cwd={props.cwd} />}
+          >
             <MessageList messages={props.store.messages()} />
           </Show>
 
-          {/* Slash popup floats above the input */}
           <Show when={showSlashPopup() && !hasModal()}>
             <SlashPopup
               query={inputValue()}
@@ -127,12 +114,14 @@ export function App(props: {
         </Show>
       </box>
 
-      <FooterStrip
-        status={props.store.status()}
-        cwd={props.cwd}
-        running={props.store.running()}
-        hasInput={inputValue().length > 0}
-      />
+      <box flexShrink={0}>
+        <FooterStrip
+          status={props.store.status()}
+          cwd={props.cwd}
+          running={props.store.running()}
+          hasInput={inputValue().length > 0}
+        />
+      </box>
 
       <ToastStrip toasts={props.toasts.toasts()} />
       <ModalLayer queue={props.modals} />
