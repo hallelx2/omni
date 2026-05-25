@@ -85,6 +85,10 @@ order. Do not jump straight to editing.
     • ask_user — ask the user a decision you genuinely cannot make alone
 - Don't call a tool to learn something you already know.
 - Prefer one well-chosen action over many speculative ones.
+- Explore efficiently: map an area with glob/grep FIRST, then read only the
+  relevant files or line ranges (read_file takes offset/limit). Don't read whole
+  large files or dump directories, and don't re-read what you've already seen —
+  it wastes the context window.
 
 ═══ EDITING CODE ═══
 
@@ -117,6 +121,16 @@ order. Do not jump straight to editing.
 export interface BuildPromptOptions {
   /** Working directory the agent operates in. */
   readonly cwd?: string
+  /** Human label for the shell the bash tool runs (e.g. "PowerShell 7+ (pwsh)", "bash"). */
+  readonly shell?: string
+  /** Shell family — selects the concrete syntax rules block. */
+  readonly shellFamily?: "powershell" | "posix"
+  /** OS version/release string (e.g. from os.release()). */
+  readonly osVersion?: string
+  /** CPU architecture (e.g. process.arch). */
+  readonly arch?: string
+  /** Whether the working directory is inside a git repo. */
+  readonly isGitRepo?: boolean
   /** Tools available this session (name + one-line description). */
   readonly tools?: ReadonlyArray<{ readonly name: string; readonly description: string }>
   /** Names of verifiers that will run after tool calls (e.g. ["typecheck","tests"]). */
@@ -140,9 +154,40 @@ export function buildSystemPrompt(opts: BuildPromptOptions = {}): string {
   // ── Environment ──────────────────────────────────────────────────────────
   const env: string[] = ["═══ ENVIRONMENT ═══", ""]
   env.push(`Date: ${new Date().toISOString().slice(0, 10)}`)
-  if (opts.cwd) env.push(`Working directory: ${opts.cwd}`)
-  env.push(`Platform: ${process.platform}`)
+  if (opts.cwd) env.push(`Working directory: ${opts.cwd}${opts.isGitRepo ? "  (git repo)" : ""}`)
+  env.push(
+    `Platform: ${process.platform}${opts.arch ? ` ${opts.arch}` : ""}${opts.osVersion ? ` — ${opts.osVersion}` : ""}`,
+  )
+  if (opts.shell) env.push(`Shell (the bash tool executes through this): ${opts.shell}`)
   parts.push(env.join("\n"))
+
+  // ── Shell discipline (concrete, per-shell) ─────────────────────────────────
+  if (opts.shellFamily === "powershell") {
+    parts.push(
+      [
+        "═══ SHELL: POWERSHELL (IMPORTANT) ═══",
+        "",
+        "The `bash` tool runs commands through PowerShell, NOT bash — Unix syntax",
+        "will fail. When you call `bash`, write PowerShell:",
+        '- Discard output with `$null` (e.g. `cmd 2>$null`), never `/dev/null`.',
+        '- Env vars: `$env:NAME` to read, `$env:NAME = "x"` to set (not `$NAME`/`%NAME%`).',
+        "- Chain with `;`; conditions with `-and`/`-or`; line continuation is a backtick.",
+        "- Paths use backslashes; quote paths containing spaces.",
+        "- Don't assume Unix tools (sed, awk, find, grep, cat) exist. For file work use",
+        "  the dedicated tools instead: glob (find), grep (search), read_file, edit.",
+      ].join("\n"),
+    )
+  } else if (opts.shellFamily === "posix") {
+    parts.push(
+      [
+        "═══ SHELL: BASH ═══",
+        "",
+        "The `bash` tool runs POSIX bash. For file work still prefer the dedicated",
+        "tools (glob, grep, read_file, edit) over `find`/`grep`/`cat`/`sed` — faster,",
+        "safer, and they don't flood the context with raw output.",
+      ].join("\n"),
+    )
+  }
 
   // ── Tools ────────────────────────────────────────────────────────────────
   if (opts.tools && opts.tools.length > 0) {

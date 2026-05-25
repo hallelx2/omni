@@ -6,8 +6,9 @@
  * needs to render status, dispatch slash commands, and continue past
  * sessions.
  */
-import { resolve, dirname } from "node:path"
-import { mkdirSync } from "node:fs"
+import { resolve, dirname, join } from "node:path"
+import { mkdirSync, existsSync } from "node:fs"
+import { release } from "node:os"
 import {
   Engine,
   AskPermissions,
@@ -49,7 +50,7 @@ import {
 import {
   bash, readFile, writeFile, edit, multiEdit, applyPatch, glob, grep, webFetch, MCPManager,
   PatchAppliesVerifier, FileParsesVerifier, TypecheckVerifier, TestVerifier,
-  makeDispatchAgentsTool,
+  makeDispatchAgentsTool, bashShell,
 } from "@omni/tools"
 import { Storage, SessionsRepo, MessagesRepo, EventsRepo, AuditRepo, ProfilesRepo, VectorMemoryRepo } from "@omni/storage"
 import {
@@ -349,10 +350,16 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
   // actual tool set, the active verifiers) and the probed model's tuning
   // (ReAct format if no native tool calls; stronger terseness if verbose).
   // A user-set config.systemPrompt overrides the whole thing.
+  const shellInfo = bashShell()
   const baseSystemPrompt =
     config.systemPrompt ??
     buildSystemPrompt({
       cwd: process.cwd(),
+      shell: shellInfo.label,
+      shellFamily: shellInfo.isWindows ? "powershell" : "posix",
+      osVersion: release(),
+      arch: process.arch,
+      isGitRepo: existsSync(join(process.cwd(), ".git")),
       tools: tools.map((t) => ({ name: t.name, description: t.description })),
       verifiers: verifiers.map((v) => v.name),
       nativeToolCalls: activeProfile?.nativeToolCalls ?? true,
@@ -365,7 +372,7 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
     tools,
     permissions,
     systemPrompt: baseSystemPrompt,
-    maxIterations: config.maxIterations ?? activeStrategy?.maxIterations ?? 12,
+    maxIterations: config.maxIterations ?? 0, // 0 = unbounded; run until done/loop/abort
     enableReActFallback: config.enableReActFallback ?? activeStrategy?.enableReActFallback ?? true,
     contextManager: new ContextManager(
       buildContextStrategy(config, {

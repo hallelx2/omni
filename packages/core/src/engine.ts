@@ -49,7 +49,7 @@ export interface EngineConfig {
   readonly permissions?: PermissionGate
   /** Optional system prompt prepended to the conversation. */
   readonly systemPrompt?: string
-  /** Hard ceiling on iterations per run. Default: 25. */
+  /** Hard ceiling on iterations per run. Default: 25. Set to 0 (or negative) for unbounded — loop detection + abort remain the real stops. */
   readonly maxIterations?: number
   /** Working directory passed to tools. Defaults to `process.cwd()`. */
   readonly cwd?: string
@@ -270,7 +270,10 @@ export class Engine {
       const toolSchemas = effectiveTools.map(toToolSchema)
       let reason: DoneReason = "max_iterations"
 
-      outer: for (let i = 1; i <= this._maxIterations; i++) {
+      // maxIterations <= 0 means unbounded: run until model_done, a detected
+      // loop, an abort, or a fatal error. Loop detection is the real guardrail.
+      const unlimited = this._maxIterations <= 0
+      outer: for (let i = 1; unlimited || i <= this._maxIterations; i++) {
         if (signal.aborted) {
           reason = "aborted"
           break

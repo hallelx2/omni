@@ -244,6 +244,25 @@ describe("Engine — bounds & safety", () => {
     expect(only(events, "engine.iteration").length).toBe(3)
   })
 
+  test("maxIterations <= 0 runs unbounded until the model finishes", async () => {
+    // Distinct args each turn → no loop-detection trip; ends on a text turn.
+    const script: MockScript[] = [
+      { kind: "tool", name: "echo", args: { text: "a" } },
+      { kind: "tool", name: "echo", args: { text: "b" } },
+      { kind: "tool", name: "echo", args: { text: "c" } },
+      { kind: "text", text: "done" },
+    ]
+    const engine = new Engine({
+      model: new MockAdapter({ script }),
+      tools: [makeEcho()],
+      maxIterations: 0, // unbounded — must not be treated as "zero iterations"
+    })
+    const events = await collect(engine.run("go"))
+    expect(only(events, "engine.done")[0]!.reason).toBe("model_done")
+    expect(only(events, "engine.iteration").length).toBe(4)
+    expect(only(events, "tool.result").length).toBe(3)
+  })
+
   test("loop detection halts when same call set repeats", async () => {
     // Same call indefinitely; loop detector should trip at threshold 3.
     const script: MockScript[] = [{ kind: "tool", name: "echo", args: { text: "same" } }]

@@ -13,6 +13,25 @@ function pickWindowsShell(): readonly string[] {
   return WINDOWS_SHELL
 }
 
+export type ShellKind = "pwsh" | "powershell" | "bash"
+
+/**
+ * The shell the `bash` tool actually runs commands through on this OS — so the
+ * harness can tell the model the truth (PowerShell on Windows, bash on POSIX)
+ * instead of letting it guess and fire wrong-shell commands.
+ */
+export function bashShell(): { readonly kind: ShellKind; readonly label: string; readonly isWindows: boolean } {
+  if (platform() === "win32") {
+    const kind: ShellKind = WINDOWS_SHELL[0] === "pwsh" ? "pwsh" : "powershell"
+    return {
+      kind,
+      label: kind === "pwsh" ? "PowerShell 7+ (pwsh)" : "Windows PowerShell (powershell.exe)",
+      isWindows: true,
+    }
+  }
+  return { kind: "bash", label: "bash", isWindows: false }
+}
+
 /**
  * Strip CSI/OSC ANSI escape sequences. Shells (especially pwsh) inject these
  * for color; they're noise in machine-readable tool results and confuse the
