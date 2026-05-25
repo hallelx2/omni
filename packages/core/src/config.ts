@@ -142,6 +142,48 @@ export const ConfigSchema = z.object({
         .optional(),
     })
     .optional(),
+
+  /** Default run mode and mode behaviour. */
+  modes: z
+    .object({
+      /** Startup mode. Default "build" (full tools). "plan" is read-only + planner. */
+      default: z.enum(["plan", "build"]).optional(),
+    })
+    .optional(),
+
+  /**
+   * Prebuilt subagents, the parallel dispatch tool, and the planner/critic
+   * that back plan/build mode. All optional; sane defaults applied at bootstrap.
+   */
+  agents: z
+    .object({
+      /** Master switch for agent tools + dispatch_agents. Default: enabled. */
+      enabled: z.boolean().optional(),
+      /** Agent names to exclude from the registry. */
+      disabled: z.array(z.string()).optional(),
+      /** Max simultaneous children in one dispatch_agents call (ceiling 8). */
+      maxConcurrency: z.number().int().positive().max(8).optional(),
+      planner: z
+        .object({
+          /** Force the planner on/off, overriding the probed strategy. */
+          enabled: z.boolean().optional(),
+          /** "provider:model" or bare model; defaults to the main model. */
+          model: z.string().optional(),
+          maxSteps: z.number().int().positive().optional(),
+        })
+        .optional(),
+      critic: z
+        .object({
+          /** Force the critic on/off, overriding the probed strategy. */
+          enabled: z.boolean().optional(),
+          model: z.string().optional(),
+          /** Feed a failing critique back as one follow-up turn. Default false. */
+          autoRetry: z.boolean().optional(),
+          retryBelow: z.number().min(0).max(1).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
 })
 
 export type Config = z.infer<typeof ConfigSchema>
