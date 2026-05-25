@@ -1,0 +1,144 @@
+name: Release (npm)
+
+# Builds the single-file binary on a native runner for every supported
+# platform, then publishes the launcher package + per-platform binary
+# packages to npm. Cross-compiling can't be done from one host (opentui
+# ships per-platform native modules), so each platform builds on its own
+# runner — that's the whole reason this matrix exists.
+#
+# Triggers:
+#   • push a tag like `v0.1.0-beta.1`  → version 0.1.0-beta.1, npm tag "beta"
+#   • push a tag like `v0.1.0`         → version 0.1.0,        npm tag "latest"
+#   • manual run (workflow_dispatch)   → you supply version + npm tag
+#
+# Requires repo secret: NPM_TOKEN (an npm automation token with publish
+# rights for the `omni-harness*` packages).
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 0.1.0-beta.1)"
+        required: true
+        type: string
+      npm_tag:
+        description: "npm dist-tag"
+        required: true
+        default: "beta"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  # ── 1. Build one native binary per platform ───────────────────────────────
+  build:
+    name: build ${{ matrix.key }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false # let every platform report; publish is gated on all passing
+      matrix:
+        include:
+          - { key: windows-x64,  os: windows-latest,  host_out: omni.exe, built: omni-windows-x64.exe }
+          - { key: linux-x64,    os: ubuntu-latest,    host_out: omni,     built: omni-linux-x64 }
+          - { key: linux-arm64,  os: ubuntu-24.04-arm, host_out: omni,     built: omni-linux-arm64 }
+          - { key: darwin-x64,   os: macos-13,         host_out: omni,     built: omni-darwin-x64 }
+          - { key: darwin-arm64, os: macos-14,         host_out: omni,     built: omni-darwin-arm64 }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Each runner builds its HOST target (build.ts auto-detects), which on
+      # this runner *is* matrix.key — so the native module resolves fine.
+      - name: Build native binary
+        run: bun run --cwd packages/cli build
+
+      # Rename host output (omni / omni.exe) to the canonical name that
+      # scripts/npm-release.ts expects to find in dist/.
+      - name: Canonicalize binary name
+        shell: bash
+        run: mv "packages/cli/dist/${{ matrix.host_out }}" "packages/cli/dist/${{ matrix.built }}"
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.built }}
+          path: packages/cli/dist/${{ matrix.built }}
+          if-no-files-found: error
+          retention-days: 3
+
+  # ── 2. Collect every binary and publish to npm ────────────────────────────
+  publish:
+    name: publish to npm
+    needs: build # only runs if ALL matrix legs succeeded
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node (for npm registry auth)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Flatten all per-platform artifacts back into packages/cli/dist/ under
+      # their canonical names (merge-multiple drops them all in one dir).
+      - name: Download platform binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: packages/cli/dist
+          merge-multiple: true
+
+      # Artifacts lose the executable bit; restore it so the published
+      # tarball ships runnable binaries on unix.
+      - name: Restore exec bits
+        run: chmod +x packages/cli/dist/omni-linux-* packages/cli/dist/omni-darwin-* || true
+
+      - name: Resolve version + npm tag
+        id: meta
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+            TAG="${{ inputs.npm_tag }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"            # strip leading v from the tag
+            case "$VERSION" in
+              *-*) TAG="beta" ;;                       # prerelease (has a hyphen)
+              *)   TAG="latest" ;;
+            esac
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Publishing $VERSION under npm tag '$TAG'"
+
+      - name: List collected binaries
+        run: ls -lh packages/cli/dist/
+
+      # --no-build: binaries already exist (from the matrix). npm reads the
+      # token from .npmrc that setup-node wrote, via NODE_AUTH_TOKEN.
+      - name: Publish
+        run: bun run scripts/npm-release.ts "${{ steps.meta.outputs.version }}" --tag "${{ steps.meta.outputs.tag }}" --no-build
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

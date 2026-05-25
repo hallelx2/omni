@@ -1,5 +1,11 @@
 preload = ["@opentui/solid/preload"]
 
+# `bun test` does not inherit the top-level preload, so the Solid JSX
+# transform must be registered here too — otherwise .tsx test files fall
+# back to bun's default (React) JSX runtime and render nothing.
+[test]
+preload = ["@opentui/solid/preload"]
+
 [install]
 # Use exact versions for reproducibility
 exact = false
