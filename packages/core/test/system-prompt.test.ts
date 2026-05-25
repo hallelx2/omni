@@ -36,7 +36,10 @@ describe("buildSystemPrompt — environment", () => {
     expect(p).not.toContain("SHELL: BASH")
   })
 
-  test("always carries the efficient-exploration rule", () => {
-    expect(buildSystemPrompt({})).toContain("Explore efficiently")
+  test("carries the token-economy + exploration rules", () => {
+    const p = buildSystemPrompt({})
+    expect(p).toContain("SPEND TOKENS LIKE MONEY")
+    expect(p).toContain("EXPLORING A CODEBASE")
+    expect(p).toContain("contracts over implementations")
   })
 })
