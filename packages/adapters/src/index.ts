@@ -28,6 +28,9 @@ export type { OpenAIAdapterConfig, OpenAIModel } from "./openai.ts"
 export { GoogleAdapter } from "./google.ts"
 export type { GoogleAdapterConfig, GoogleModel } from "./google.ts"
 
+export { embeddingModelFor } from "./embedding.ts"
+export type { EmbeddingModelConfig } from "./embedding.ts"
+
 // Low-level translation utilities for advanced consumers / custom adapters.
 export { messagesToAISDK } from "./util/messages.ts"
 export { toolsToAISDK } from "./util/tools.ts"

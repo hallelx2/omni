@@ -64,6 +64,25 @@ export const ConfigSchema = z.object({
     })
     .optional(),
 
+  /** Long-term memory: embedding-backed recall + capture across sessions. */
+  memory: z
+    .object({
+      /** Enable memory (auto-recall + the `remember` tool). Default false (needs an embedding model). */
+      enabled: z.boolean().optional(),
+      /**
+       * Embedding model ref "provider:model" — e.g. "openai:text-embedding-3-small"
+       * or "ollama:nomic-embed-text". Required when enabled.
+       */
+      embeddingModel: z.string().optional(),
+      /** Max memories injected per turn. Default 5. */
+      k: z.number().int().positive().optional(),
+      /** Similarity floor (0..1) below which recalled memories are dropped. Default 0.3. */
+      minScore: z.number().min(0).max(1).optional(),
+      /** Auto-recall relevant memories before each turn. Default true (when enabled). */
+      autoRecall: z.boolean().optional(),
+    })
+    .optional(),
+
   ui: z
     .object({
       theme: z.enum(["dark", "light", "auto"]).optional(),

@@ -30,6 +30,12 @@ export interface OrchestrationDeps {
   /** Feed a failing critique back as one follow-up turn. Default false. */
   readonly criticAutoRetry?: boolean
   readonly fileTracer?: { record(ev: EngineEvent): void } | null
+  /**
+   * Recall long-term memory relevant to the turn's input, rendered as a
+   * system-prompt block (or null when nothing is relevant). Omitted when memory
+   * is disabled. The closure owns its own error handling — it must not throw.
+   */
+  readonly recallMemory?: (input: string) => Promise<string | null>
 }
 
 export interface TurnContext {
@@ -73,12 +79,11 @@ export function computeEnabledTools(
   return skillNames ?? undefined
 }
 
-/** Join the planner directive and the skill prompt into one system prefix. */
+/** Join recalled-memory, planner directive, and skill prompt into one system prefix. */
 export function composeSystemPrefix(
-  plannerBlock: string | null,
-  skillPrompt: string | null,
+  ...blocks: (string | null | undefined)[]
 ): string | undefined {
-  const parts = [plannerBlock, skillPrompt].filter(
+  const parts = blocks.filter(
     (p): p is string => typeof p === "string" && p.trim().length > 0,
   )
   return parts.length > 0 ? parts.join("\n\n") : undefined
@@ -111,7 +116,19 @@ export async function runTurn(
     }
   }
 
+  // ── pre: memory recall (auto-injected as a system block) ───────────────────
+  let memoryBlock: string | null = null
+  if (deps.recallMemory) {
+    try {
+      memoryBlock = await deps.recallMemory(input)
+      if (memoryBlock) sink.onInfo?.("recalled long-term memory", "dim")
+    } catch {
+      // recall is best-effort; never block the turn
+    }
+  }
+
   const systemPromptPrefix = composeSystemPrefix(
+    memoryBlock,
     plannerBlock,
     turn.activeSkill?.systemPrompt ?? null,
   )

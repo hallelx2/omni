@@ -75,6 +75,7 @@ const orchestration: OrchestrationDeps = {
   critic: deps.critic,
   criticAutoRetry: deps.criticAutoRetry,
   fileTracer: deps.fileTracer,
+  recallMemory: deps.recallMemory,
 }
 const sink: OrchestrationSink = {
   onEngineEvent(ev) {

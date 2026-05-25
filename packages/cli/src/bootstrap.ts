@@ -51,7 +51,7 @@ import {
   PatchAppliesVerifier, FileParsesVerifier, TypecheckVerifier, TestVerifier,
   makeDispatchAgentsTool,
 } from "@omni/tools"
-import { Storage, SessionsRepo, MessagesRepo, EventsRepo, AuditRepo, ProfilesRepo } from "@omni/storage"
+import { Storage, SessionsRepo, MessagesRepo, EventsRepo, AuditRepo, ProfilesRepo, VectorMemoryRepo } from "@omni/storage"
 import {
   FileTracer,
   SqliteProfileCache,
@@ -63,9 +63,11 @@ import {
   setAgentFrontmatterParser,
   Planner,
   Critic,
+  VectorMemory,
   type Skill,
   type Agent,
 } from "@omni/improve"
+import { buildMemory, makeRememberTool, recallBlock } from "./memory-runtime.ts"
 import { parseFrontmatter } from "./user-commands.ts"
 import { resolveAdapter, makeAgentTool, agentToolName, structuredConfigFor, type BuildAgentDeps } from "./agents-runtime.ts"
 import { createModeHolder, type ModeHolder, type RunMode } from "./mode.ts"
@@ -127,6 +129,10 @@ export interface BootstrapResult {
   readonly critic: Critic
   readonly criticAutoRetry: boolean
   readonly agentFlags: { readonly usePlanner: boolean; readonly useCritic: boolean }
+  /** Long-term memory, or null when disabled (config.memory.enabled). */
+  readonly memory: VectorMemory | null
+  /** Recall closure for the turn loop; undefined when memory is off or autoRecall is disabled. */
+  readonly recallMemory?: (input: string) => Promise<string | null>
   /** Non-fatal model-resolution warnings (e.g. missing key → fell back to main model). */
   readonly modelWarnings: readonly string[]
   readonly sessions: SessionsRepo
@@ -171,6 +177,7 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
   const events = new EventsRepo(storage)
   const audit = new AuditRepo(storage)
   const profiles = new ProfilesRepo(storage)
+  const vectorRepo = new VectorMemoryRepo(storage)
 
   // ─── Hooks ──────────────────────────────────────────────────────────────
   const hooks = await loadHooks(config)
@@ -261,10 +268,20 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
     opts.onRequestBuildConfirm ? { confirm: opts.onRequestBuildConfirm } : undefined,
   )
 
+  // ─── Long-term memory (opt-in: config.memory.enabled + embeddingModel) ─────
+  const memory = buildMemory(config, vectorRepo, (m) => modelWarnings.push(m))
+  const rememberTool = memory ? makeRememberTool(memory) : null
+  const recallMemory =
+    memory && config.memory?.autoRecall !== false
+      ? (input: string) =>
+          recallBlock(memory, input, { k: config.memory?.k, minScore: config.memory?.minScore })
+      : undefined
+
   const tools: readonly Tool[] = [
     ...builtinTools,
     ...agentTools,
     ...(dispatchTool ? [dispatchTool] : []),
+    ...(rememberTool ? [rememberTool] : []),
     requestBuild,
     ...(opts.extraTools ?? []),
   ]
@@ -457,6 +474,8 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
     critic,
     criticAutoRetry,
     agentFlags,
+    memory,
+    recallMemory,
     modelWarnings,
     sessions,
     messages,
