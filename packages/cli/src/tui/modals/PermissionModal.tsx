@@ -1,5 +1,6 @@
 import { useKeyboard } from "@opentui/solid"
 import { Modal } from "./Modal.tsx"
+import type { RGBA } from "@opentui/core"
 import { theme } from "../theme.ts"
 import type { PermissionModalSpec } from "./types.ts"
 
@@ -56,7 +57,7 @@ export function PermissionModal(props: { spec: PermissionModalSpec }) {
   )
 }
 
-function KeyLabel(props: { k: string; label: string; tone: string }) {
+function KeyLabel(props: { k: string; label: string; tone: RGBA }) {
   return (
     <box flexDirection="row">
       <text fg={props.tone}>{props.k}</text>

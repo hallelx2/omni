@@ -1,6 +1,7 @@
 import { For, Show } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
 import { Modal } from "./Modal.tsx"
+import type { RGBA } from "@opentui/core"
 import { theme } from "../theme.ts"
 import type { ModalCommon } from "./types.ts"
 import type { MessageEntry, VerifierEntry } from "../state.ts"
@@ -90,7 +91,7 @@ function verifierIcon(s: VerifierEntry["status"]): string {
     case "skip":    return "○"
   }
 }
-function verifierColor(s: VerifierEntry["status"]): string {
+function verifierColor(s: VerifierEntry["status"]): RGBA {
   switch (s) {
     case "running": return theme.info
     case "pass":    return theme.success

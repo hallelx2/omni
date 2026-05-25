@@ -1,41 +1,54 @@
 /**
- * TUI driver — opentui + solid. Bootstraps the engine once via
- * `bootstrap()`, mounts the App, forwards engine events into the store,
- * and dispatches slash commands through the existing command handlers.
+ * TUI driver — opentui + solid.
+ *
+ * The UI paints IMMEDIATELY: `runTui` mounts a boot screen and kicks off
+ * `bootstrap()` in the BACKGROUND (it connects MCP servers and probes the
+ * model, which can take seconds). When bootstrap resolves we swap in the
+ * full chat app; if it fails we show an error screen instead of crashing.
  */
-import { render } from "@opentui/solid"
-import { bootstrap } from "../bootstrap.ts"
+import { render, useTerminalDimensions } from "@opentui/solid"
+import { Show, createSignal, onMount, onCleanup } from "solid-js"
+import { TextAttributes } from "@opentui/core"
+import { bootstrap, type BootstrapResult } from "../bootstrap.ts"
 import { App } from "./App.tsx"
 import { createTuiStore } from "./state.ts"
 import { tryDispatchCommand } from "../commands.ts"
-import { findMatchingSkill, filterToolsBySkill, type Skill } from "@omni/improve"
+import { findMatchingSkill, renderPlan, type Skill } from "@omni/improve"
 import { looksDestructive } from "@omni/core"
-import { createModalQueue } from "./modals/index.ts"
-import { createToastStore } from "./Toast.tsx"
+import { runTurn, type OrchestrationDeps, type OrchestrationSink } from "../orchestrate.ts"
+import { agentToolName } from "../agents-runtime.ts"
+import { createModalQueue, type ModalQueue } from "./modals/index.ts"
+import { createToastStore, type ToastStore } from "./Toast.tsx"
 import { createAskUserTool } from "./askUserTool.ts"
+import { createPermissionController, type PermissionController } from "./PermissionPrompt.tsx"
+import { Spinner } from "./Spinner.tsx"
+import { theme } from "./theme.ts"
 
 export async function runTui(): Promise<void> {
-  // Modal queue + toast store live outside the engine — they're surface
-  // concerns. The permission gate funnels asks through `modals.push`.
+  // Surface concerns — they don't need the engine, so they exist before
+  // bootstrap and are captured by both the boot screen and the chat app.
   const modals = createModalQueue()
   const toasts = createToastStore()
+  const permission = createPermissionController()
   const askUserTool = createAskUserTool(modals)
-
-  // Per-session "always" decisions for permission asks. Keyed by tool name.
   const sessionAllow = new Set<string>()
   const sessionDeny = new Set<string>()
 
-  const deps = await bootstrap({
+  const [deps, setDeps] = createSignal<BootstrapResult | null>(null)
+  const [bootError, setBootError] = createSignal<Error | null>(null)
+  const [bootStep, setBootStep] = createSignal("starting…")
+  const cwd = process.cwd()
+
+  // Fire-and-forget: bootstrap runs while the boot screen is already painted.
+  void bootstrap({
     askMode: "callback",
     askHandler: async (tool, call) => {
-      // Session-level overrides shortcut the modal.
       if (sessionDeny.has(tool.name)) return "deny"
       if (sessionAllow.has(tool.name)) return "allow"
-      const decision = await modals.push({
-        kind: "permission",
+      const decision = await permission.request({
         toolName: tool.name,
         toolDescription: tool.description,
-        argsPreview: previewArgs(call.args),
+        args: call.args,
         risk: looksDestructive(call.args) ? "this call may modify or delete files" : null,
       })
       if (decision === "allow-always") {
@@ -52,12 +65,89 @@ export async function runTui(): Promise<void> {
     },
     verbose: false,
     extraTools: [askUserTool],
+    onProgress: (step) => setBootStep(step),
+    onRequestBuildConfirm: async (plan) => {
+      const yes = await modals.push({
+        kind: "confirm",
+        title: "switch to build mode?",
+        body: plan ? `Plan:\n${plan}` : "The agent wants to start making changes.",
+        confirmLabel: "build",
+        cancelLabel: "stay in plan",
+      })
+      return yes === true
+    },
   })
+    .then((d) => setDeps(d))
+    .catch((e) => setBootError(e instanceof Error ? e : new Error(String(e))))
+
+  const useMouse = process.env.OMNI_MOUSE !== "0"
+  await render(
+    () => (
+      <Show
+        when={deps()}
+        fallback={<BootScreen step={bootStep()} error={bootError()} cwd={cwd} />}
+      >
+        <ChatApp deps={deps()!} modals={modals} toasts={toasts} permission={permission} />
+      </Show>
+    ),
+    { useMouse },
+  )
+}
+
+// ─── Boot screen (painted instantly while bootstrap runs) ───────────────────
+
+function BootScreen(props: { step: string; error: Error | null; cwd: string }) {
+  const dims = useTerminalDimensions()
+  return (
+    <box
+      width={dims().width}
+      height={dims().height}
+      flexDirection="column"
+      justifyContent="center"
+      alignItems="center"
+      backgroundColor={theme.background}
+    >
+      <text fg={theme.primary} attributes={TextAttributes.BOLD}>
+        ● omni
+      </text>
+      <box height={1} />
+      <Show
+        when={props.error}
+        fallback={<Spinner color={theme.textMuted}>{props.step}</Spinner>}
+      >
+        <box flexDirection="column" alignItems="center">
+          <text fg={theme.error}>startup failed</text>
+          <text fg={theme.textMuted}>{props.error?.message}</text>
+          <box height={1} />
+          <text fg={theme.textMuted}>ctrl+c to exit</text>
+        </box>
+      </Show>
+      <box height={1} />
+      <text fg={theme.textMuted}>{props.cwd}</text>
+    </box>
+  )
+}
+
+// ─── Chat app (mounts once bootstrap resolves) ──────────────────────────────
+
+function ChatApp(props: {
+  deps: BootstrapResult
+  modals: ModalQueue
+  toasts: ToastStore
+  permission: PermissionController
+}) {
+  const deps = props.deps
+  const { modals, toasts, permission } = props
 
   const store = createTuiStore({
     modelName: deps.modelName,
     mcpServers: deps.mcpManager.status().filter((s) => s.status === "connected").length,
+    mode: deps.mode.get(),
+    agentNames: new Set([...[...deps.agents.keys()].map(agentToolName), "dispatch_agents"]),
   })
+  const unsubMode = deps.mode.subscribe((m) => store.setMode(m))
+  onCleanup(() => unsubMode())
+  for (const w of deps.modelWarnings) store.pushSystem(`⚠ ${w}`, "warn")
 
   if (deps.activeProfile) {
     store.setProfile({
@@ -77,14 +167,34 @@ export async function runTui(): Promise<void> {
     store.setSkillName(skill?.name ?? null)
   }
 
+  // ─── Shared orchestration (planner/critic + mode-aware tool gating) ──────
+  const orchestration: OrchestrationDeps = {
+    engine: deps.engine,
+    tools: deps.tools,
+    planner: deps.planner,
+    critic: deps.critic,
+    criticAutoRetry: deps.criticAutoRetry,
+    fileTracer: deps.fileTracer,
+  }
+  const sink: OrchestrationSink = {
+    onEngineEvent: (ev) => store.pushEvent(ev),
+    onPlan: (plan) => store.pushSystem("plan:\n" + renderPlan(plan), "info"),
+    onCritique: (c, willRetry) => {
+      const tone = c.verdict === "fail" ? "error" : c.verdict === "concern" ? "warn" : "dim"
+      const issues = c.issues.length ? "\n- " + c.issues.join("\n- ") : ""
+      store.pushSystem(
+        `critique: ${c.verdict} (${c.score.toFixed(2)})${willRetry ? " — retrying" : ""}${issues}`,
+        tone,
+      )
+    },
+    onInfo: (text, tone) =>
+      store.pushSystem(text, tone === "error" ? "error" : tone === "warn" ? "warn" : "dim"),
+  }
+
   // ─── Run-state (one engine.run() at a time)
   let currentRun: AbortController | null = null
 
   async function startEngineRun(text: string): Promise<void> {
-    // Auto-route to a skill on each user prompt unless:
-    //   - auto-route is disabled
-    //   - the user manually pinned a skill via /skill (sticky)
-    //   - the input is itself a slash command
     if (deps.skillAutoRoute && activeSkillSource !== "manual" && !text.startsWith("/")) {
       const eligible = [...deps.skills.values()].filter((s) => deps.skillsEnabled.has(s.name))
       const matched = findMatchingSkill(text, eligible)
@@ -100,22 +210,18 @@ export async function runTui(): Promise<void> {
     store.pushUser(text)
 
     currentRun = new AbortController()
-    const runOpts: { signal: AbortSignal; systemPromptPrefix?: string; enabledTools?: Set<string> } = {
-      signal: currentRun.signal,
-    }
-    if (activeSkill) {
-      runOpts.systemPromptPrefix = activeSkill.systemPrompt
-      if (activeSkill.toolsOnly) {
-        const allowed = new Set<string>()
-        for (const t of filterToolsBySkill(deps.tools, activeSkill)) allowed.add(t.name)
-        runOpts.enabledTools = allowed
-      }
-    }
     try {
-      for await (const ev of deps.engine.run(text, runOpts)) {
-        store.pushEvent(ev)
-        if (deps.fileTracer) deps.fileTracer.record(ev)
-      }
+      await runTurn(
+        orchestration,
+        text,
+        {
+          mode: deps.mode.get(),
+          activeSkill,
+          strategy: deps.agentFlags,
+          signal: currentRun.signal,
+        },
+        sink,
+      )
     } catch (e) {
       store.pushSystem(`error: ${(e as Error).message}`, "error")
     } finally {
@@ -128,8 +234,6 @@ export async function runTui(): Promise<void> {
       const trimmed = text.trim()
       const name = trimmed.slice(1).split(/\s+/)[0]?.toLowerCase() ?? ""
 
-      // TUI-specific overrides: some commands render as modal overlays
-      // rather than chat output.
       if (name === "help") {
         await modals.push({ kind: "help" })
         return
@@ -155,7 +259,6 @@ export async function runTui(): Promise<void> {
         return
       }
       if (name === "clear") {
-        // Clear via modal-confirm to avoid accidental loss.
         const yes = await modals.push({
           kind: "confirm",
           title: "clear conversation history?",
@@ -166,39 +269,6 @@ export async function runTui(): Promise<void> {
         if (yes) {
           store.pushSystem("(screen cleared — full history still in storage)", "dim")
         }
-        return
-      }
-      if (name === "ask-demo") {
-        // Local demo of AskQuestionModal so you can see what the agent's
-        // ask_user tool feels like.
-        const answer = await modals.push({
-          kind: "question",
-          question: "Which approach do you prefer for the refactor?",
-          context: "Different trade-offs; you can also type your own.",
-          options: [
-            {
-              key: "1",
-              label: "Drop-in JWT replacement",
-              description: "Smallest diff; one file changed.",
-              value: "jwt-drop-in",
-            },
-            {
-              key: "2",
-              label: "JWT + session store",
-              description: "More work, but supports revocation.",
-              value: "jwt-with-store",
-            },
-            {
-              key: "3",
-              label: "Keep basicAuth for now",
-              description: "Defer the migration; just clean up the existing code.",
-              value: "no-migration",
-            },
-          ],
-          allowOther: true,
-        })
-        if (answer === null) toasts.push("question cancelled", "warn")
-        else toasts.push(`answered: ${answer}`, "success")
         return
       }
 
@@ -216,6 +286,8 @@ export async function runTui(): Promise<void> {
         sessionsRepo: deps.sessions,
         messagesRepo: deps.messages,
         onContinueSession: (id) => deps.continueSession(id),
+        mode: deps.mode.get(),
+        onModeChange: (m, s) => deps.mode.set(m, s ?? "manual"),
       })
       if (!cmd) {
         store.pushSystem(`unknown command. type /help to list.`, "warn")
@@ -239,9 +311,9 @@ export async function runTui(): Promise<void> {
   }
 
   function handleAbort(): void {
-    if (currentRun) {
+    if (currentRun && !currentRun.signal.aborted) {
       currentRun.abort()
-      store.pushSystem("aborted", "dim")
+      store.pushSystem("interrupting…", "dim")
     }
   }
 
@@ -257,42 +329,28 @@ export async function runTui(): Promise<void> {
     process.exit(code)
   }
 
-  process.on("SIGINT", () => {
-    if (currentRun) handleAbort()
-    else void shutdown(0)
+  onMount(() => {
+    const onSig = () => {
+      if (currentRun) handleAbort()
+      else void shutdown(0)
+    }
+    process.on("SIGINT", onSig)
+    onCleanup(() => process.off("SIGINT", onSig))
   })
 
-  // ─── Mount the TUI ───────────────────────────────────────────────────────
-  // Mouse is OFF by default so the terminal's own click-drag selection /
-  // copy keeps working. Keyboard scroll (pgup/pgdn, ctrl+u/d) works either
-  // way. Set OMNI_MOUSE=1 to enable wheel-scroll (then use shift+drag for
-  // native selection, which most terminals still honor).
-  const useMouse = process.env.OMNI_MOUSE === "1"
-  await render(
-    () => (
-      <App
-        store={store}
-        cwd={process.cwd()}
-        sessionId={deps.engine.sessionId()}
-        modals={modals}
-        toasts={toasts}
-        handlers={{
-          onSubmit: handleSubmit,
-          onAbort: handleAbort,
-          onQuit: () => void shutdown(0),
-        }}
-      />
-    ),
-    { useMouse },
+  return (
+    <App
+      store={store}
+      cwd={process.cwd()}
+      sessionId={deps.engine.sessionId()}
+      modals={modals}
+      toasts={toasts}
+      permission={permission}
+      handlers={{
+        onSubmit: handleSubmit,
+        onAbort: handleAbort,
+        onQuit: () => void shutdown(0),
+      }}
+    />
   )
-}
-
-function previewArgs(args: unknown): string {
-  if (args === null || args === undefined) return "(no args)"
-  let s: string
-  if (typeof args === "string") s = JSON.stringify(args)
-  else if (typeof args === "object") {
-    try { s = JSON.stringify(args) } catch { s = String(args) }
-  } else s = String(args)
-  return s.length > 240 ? `${s.slice(0, 240)}…` : s
 }

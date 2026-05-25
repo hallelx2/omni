@@ -1,5 +1,7 @@
 import { For, Show, createSignal, onCleanup } from "solid-js"
-import { theme } from "./theme.ts"
+import { useTerminalDimensions } from "@opentui/solid"
+import type { RGBA } from "@opentui/core"
+import { SplitBorder, theme } from "./theme.ts"
 
 export interface ToastEntry {
   readonly id: string
@@ -31,14 +33,34 @@ export function createToastStore() {
 
 export type ToastStore = ReturnType<typeof createToastStore>
 
+/**
+ * Toast overlay — opencode's `ui/toast.tsx`: top-right, panel background,
+ * a left+right `┃` border tinted to the variant colour, word-wrapped
+ * message. opencode shows one at a time; we keep Omni's short stack and
+ * render each in the same bordered idiom.
+ */
 export function ToastStrip(props: { toasts: readonly ToastEntry[] }) {
+  const dim = useTerminalDimensions()
   return (
     <Show when={props.toasts.length > 0}>
-      <box position="absolute" top={1} right={2} flexDirection="column" zIndex={2000}>
+      <box position="absolute" top={2} right={2} flexDirection="column" zIndex={2000}>
         <For each={props.toasts.slice(-4)}>
           {(t) => (
-            <box marginBottom={1} paddingLeft={2} paddingRight={2} backgroundColor={theme.backgroundPanel}>
-              <text fg={toneFg(t.tone)}>{toneIcon(t.tone)} {t.text}</text>
+            <box
+              marginBottom={1}
+              maxWidth={Math.min(60, dim().width - 6)}
+              paddingLeft={2}
+              paddingRight={2}
+              paddingTop={1}
+              paddingBottom={1}
+              backgroundColor={theme.backgroundPanel}
+              border={["left", "right"]}
+              borderColor={toneFg(t.tone)}
+              customBorderChars={SplitBorder.customBorderChars}
+            >
+              <text fg={theme.text} wrapMode="word" width="100%">
+                {t.text}
+              </text>
             </box>
           )}
         </For>
@@ -47,19 +69,11 @@ export function ToastStrip(props: { toasts: readonly ToastEntry[] }) {
   )
 }
 
-function toneIcon(t: ToastEntry["tone"]): string {
-  switch (t) {
-    case "success": return "✓"
-    case "warn":    return "⚠"
-    case "error":   return "✗"
-    case "info":    return "ℹ"
-  }
-}
-function toneFg(t: ToastEntry["tone"]): string {
+function toneFg(t: ToastEntry["tone"]): RGBA {
   switch (t) {
     case "success": return theme.success
     case "warn":    return theme.warning
     case "error":   return theme.error
-    case "info":    return theme.text
+    case "info":    return theme.info
   }
 }

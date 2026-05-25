@@ -1,6 +1,7 @@
 import { For, Show, createSignal } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
 import { Modal } from "./Modal.tsx"
+import type { RGBA } from "@opentui/core"
 import { theme, selectedFg } from "../theme.ts"
 import type { SessionPickerModalSpec } from "./types.ts"
 
@@ -62,7 +63,7 @@ export function SessionPicker(props: { spec: SessionPickerModalSpec }) {
 function shortId(id: string): string {
   return id.slice(-12)
 }
-function statusColor(s: string, selected: boolean): string {
+function statusColor(s: string, selected: boolean): RGBA {
   if (selected) return selectedFg(theme.primary)
   if (s === "active") return theme.success
   if (s === "completed") return theme.textMuted

@@ -1,0 +1,9 @@
+# The root `dev` script runs `bun run --cwd packages/cli src/bin.ts`. When bun
+# resolves config from THIS package's cwd it must still register the Solid JSX
+# transform, otherwise it falls back to its automatic JSX runtime and dies with
+#   Export named 'jsxDEV' not found in @opentui/solid/jsx-runtime
+# So mirror the root preload here (covers both `bun run dev` and `bun test`).
+preload = ["@opentui/solid/preload"]
+
+[test]
+preload = ["@opentui/solid/preload"]

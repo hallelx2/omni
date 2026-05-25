@@ -1,5 +1,6 @@
 import type { JSX } from "@opentui/solid"
 import { useTerminalDimensions } from "@opentui/solid"
+import { RGBA } from "@opentui/core"
 import { theme } from "../theme.ts"
 
 /**
@@ -33,7 +34,7 @@ export function Modal(props: {
       flexDirection="column"
       alignItems="center"
       paddingTop={Math.floor(dimensions().height / 4)}
-      backgroundColor="rgba(0,0,0,0.6)"
+      backgroundColor={RGBA.fromInts(0, 0, 0, 150)}
       zIndex={3000}
     >
       <box

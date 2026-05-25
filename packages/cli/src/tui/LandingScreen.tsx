@@ -1,33 +1,35 @@
+import { For } from "solid-js"
 import { theme } from "./theme.ts"
 import type { StatusState } from "./state.ts"
 
 /**
- * Landing — opencode pattern. Springs top and bottom, a small brand mark
- * and a few stats in the middle. Top-level props throughout.
+ * Landing block — just the centred logo, tagline and a couple of stats.
+ * The App centres this together with the prompt (ChatGPT-style) when the
+ * transcript is empty, so this carries no flex springs of its own.
  */
+
+const LOGO = [
+  " ██████╗ ███╗   ███╗███╗   ██╗██╗",
+  "██╔═══██╗████╗ ████║████╗  ██║██║",
+  "██║   ██║██╔████╔██║██╔██╗ ██║██║",
+  "██║   ██║██║╚██╔╝██║██║╚██╗██║██║",
+  "╚██████╔╝██║ ╚═╝ ██║██║ ╚████║██║",
+  " ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═══╝╚═╝",
+]
+
 export function LandingScreen(props: { status: StatusState; cwd: string }) {
   return (
-    <box flexGrow={1} flexDirection="column" paddingTop={1}>
-      <box flexGrow={1} />
-      <text fg={theme.primary}>◆</text>
+    <box flexShrink={0} flexDirection="column" alignItems="center">
+      <For each={LOGO}>{(line) => <text fg={theme.primary}>{line}</text>}</For>
+      <box height={1} />
       <text fg={theme.textMuted}>a self-improving agent harness for open models</text>
       <box height={1} />
-      <Stat label="model" value={props.status.modelName} />
-      <Stat label="cwd" value={shorten(props.cwd, 70)} />
-      <box height={1} />
       <text fg={theme.textMuted}>
-        type your request below, or <span style={{ fg: theme.text }}>/</span> for commands
+        model <span style={{ fg: theme.text }}>{props.status.modelName}</span>
       </text>
-      <box flexGrow={1} />
-    </box>
-  )
-}
-
-function Stat(props: { label: string; value: string }) {
-  return (
-    <box flexDirection="row">
-      <text fg={theme.textMuted}>{props.label.padEnd(8)}</text>
-      <text fg={theme.text}>{props.value}</text>
+      <text fg={theme.textMuted}>
+        cwd   <span style={{ fg: theme.text }}>{shorten(props.cwd, 60)}</span>
+      </text>
     </box>
   )
 }

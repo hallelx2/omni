@@ -1,5 +1,6 @@
 import { createSignal, createMemo } from "solid-js"
 import type { CumulativeUsage, EngineEvent, ToolCall } from "@omni/core"
+import type { RunMode } from "../mode.ts"
 
 /**
  * Reactive store for the TUI. Engine events flow into here through
@@ -16,7 +17,7 @@ import type { CumulativeUsage, EngineEvent, ToolCall } from "@omni/core"
 export type MessageEntry =
   | { kind: "user"; id: string; text: string; ts: number }
   | { kind: "assistant"; id: string; text: string; ts: number; streaming: boolean; thinking?: string }
-  | { kind: "tool"; id: string; call: ToolCall; ts: number; status: ToolStatus; durationMs?: number; resultPreview?: string; errorMessage?: string; verifiers: VerifierEntry[] }
+  | { kind: "tool"; id: string; call: ToolCall; ts: number; status: ToolStatus; durationMs?: number; result?: unknown; resultPreview?: string; errorMessage?: string; verifiers: VerifierEntry[]; subagent?: boolean; progress?: readonly string[] }
   | { kind: "system"; id: string; text: string; ts: number; tone?: "info" | "warn" | "error" | "dim" }
 
 export type ToolStatus = "pending" | "running" | "ok" | "error" | "denied" | "invalid"
@@ -41,6 +42,7 @@ export interface StatusState {
   readonly iter: number
   readonly maxIter: number
   readonly skillName: string | null
+  readonly mode: RunMode
   readonly memoryHits: number
   readonly mcpServers: number
   readonly verifierPass: number
@@ -53,7 +55,11 @@ export interface StatusState {
 export function createTuiStore(initial: {
   modelName: string
   mcpServers: number
+  mode: RunMode
+  /** Tool names that are subagents (rendered with the peek panel). */
+  agentNames?: ReadonlySet<string>
 }) {
+  const agentNames = initial.agentNames ?? new Set<string>()
   // Message log — appending arrays in Solid via signal-replace; the entries
   // themselves carry mutable status, but we replace the array on insert.
   const [messages, setMessages] = createSignal<readonly MessageEntry[]>([], { equals: false })
@@ -63,6 +69,7 @@ export function createTuiStore(initial: {
   const [iter, setIter] = createSignal(0)
   const [maxIter, setMaxIter] = createSignal(0)
   const [skillName, setSkillName] = createSignal<string | null>(null)
+  const [mode, setMode] = createSignal<RunMode>(initial.mode)
   const [memoryHits, setMemoryHits] = createSignal(0)
   const [mcpServers, setMcpServers] = createSignal(initial.mcpServers)
   const [verifierPass, setVerifierPass] = createSignal(0)
@@ -78,6 +85,36 @@ export function createTuiStore(initial: {
   // Active streaming assistant message id — used to append model.delta text.
   let activeAssistantId: string | null = null
   let toolIndex = new Map<string, number>() // call.id → index in messages
+
+  // Streaming throttle. model.delta can fire every few ms; re-rendering the
+  // (growing) markdown — tables and all — on every token thrashes the
+  // terminal (visible full-screen blink), keeps the markdown from settling,
+  // and fights sticky-scroll. Buffer tokens and flush at ~16fps instead.
+  let deltaBuf = ""
+  let thinkingBuf = ""
+  let flushTimer: ReturnType<typeof setTimeout> | null = null
+  function flushStream(): void {
+    const dtext = deltaBuf
+    const ttext = thinkingBuf
+    deltaBuf = ""
+    thinkingBuf = ""
+    flushTimer = null
+    if (!activeAssistantId || (!dtext && !ttext)) return
+    const idx = findMessageIndex((m) => m.kind === "assistant" && m.id === activeAssistantId)
+    if (idx < 0) return
+    updateMessage(idx, (m) =>
+      m.kind === "assistant"
+        ? { ...m, text: m.text + dtext, thinking: ttext ? (m.thinking ?? "") + ttext : m.thinking }
+        : m,
+    )
+  }
+  function scheduleFlush(): void {
+    if (!flushTimer) flushTimer = setTimeout(flushStream, 60)
+  }
+  function finalizeStream(): void {
+    if (flushTimer) clearTimeout(flushTimer)
+    flushStream()
+  }
 
   function appendMessage(entry: MessageEntry): void {
     setMessages((prev) => [...prev, entry])
@@ -116,6 +153,7 @@ export function createTuiStore(initial: {
         return
       case "engine.done":
         setRunning(false)
+        finalizeStream() // flush any buffered streaming tail
         // Close out any still-streaming assistant message.
         if (activeAssistantId) {
           const idx = findMessageIndex((m) => m.kind === "assistant" && m.id === activeAssistantId)
@@ -179,24 +217,19 @@ export function createTuiStore(initial: {
         return
       case "model.delta": {
         if (!activeAssistantId) return
-        const idx = findMessageIndex((m) => m.kind === "assistant" && m.id === activeAssistantId)
-        if (idx < 0) return
-        updateMessage(idx, (m) =>
-          m.kind === "assistant" ? { ...m, text: m.text + ev.text } : m,
-        )
+        deltaBuf += ev.text
+        scheduleFlush()
         return
       }
       case "model.thinking_delta": {
         if (!activeAssistantId) return
-        const idx = findMessageIndex((m) => m.kind === "assistant" && m.id === activeAssistantId)
-        if (idx < 0) return
-        updateMessage(idx, (m) =>
-          m.kind === "assistant" ? { ...m, thinking: (m.thinking ?? "") + ev.text } : m,
-        )
+        thinkingBuf += ev.text
+        scheduleFlush()
         return
       }
       case "model.done": {
         if (!activeAssistantId) return
+        finalizeStream() // apply any buffered tail before closing
         const idx = findMessageIndex((m) => m.kind === "assistant" && m.id === activeAssistantId)
         if (idx >= 0) {
           updateMessage(idx, (m) =>
@@ -216,14 +249,21 @@ export function createTuiStore(initial: {
           ts: Date.now(),
           status: "running",
           verifiers: [],
+          subagent: agentNames.has(ev.call.name) || ev.call.name === "dispatch_agents",
         }
         appendMessage(entry)
         toolIndex.set(id, currentLength() - 1)
         return
       }
       case "tool.progress": {
-        // Cheap implementation: don't render progress lines for now (they
-        // spam the log on long-running tools). Could surface in a sidebar.
+        // Subagents stream their child activity here ("peek" trace). Attach it
+        // to the tool entry (capped) so the surface can render it live and on
+        // expand. Non-subagent tools rarely emit progress; we still capture it.
+        const idx = toolIndex.get(ev.call.id)
+        if (idx === undefined) return
+        updateMessage(idx, (m) =>
+          m.kind === "tool" ? { ...m, progress: appendProgress(m.progress, ev.message) } : m,
+        )
         return
       }
       case "tool.result": {
@@ -231,7 +271,7 @@ export function createTuiStore(initial: {
         if (idx === undefined) return
         updateMessage(idx, (m) =>
           m.kind === "tool"
-            ? { ...m, status: "ok", durationMs: ev.durationMs, resultPreview: shortPreview(ev.result) }
+            ? { ...m, status: "ok", durationMs: ev.durationMs, result: capResult(ev.result) }
             : m,
         )
         return
@@ -350,6 +390,7 @@ export function createTuiStore(initial: {
     iter: iter(),
     maxIter: maxIter(),
     skillName: skillName(),
+    mode: mode(),
     memoryHits: memoryHits(),
     mcpServers: mcpServers(),
     verifierPass: verifierPass(),
@@ -376,6 +417,7 @@ export function createTuiStore(initial: {
     pushSystem,
     setProfile,
     setSkillName,
+    setMode,
     setModelName,
     setMcpServers,
   }
@@ -390,12 +432,24 @@ function cryptoId(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
 }
 
-function shortPreview(value: unknown): string {
-  if (typeof value === "string") return value.length > 120 ? `${value.slice(0, 120)}…` : value
-  try {
-    const s = JSON.stringify(value)
-    return s.length > 120 ? `${s.slice(0, 120)}…` : s
-  } catch {
-    return String(value)
+const PROGRESS_CAP = 200
+
+/** Append a subagent progress line, deduping immediate repeats and capping length. */
+function appendProgress(prev: readonly string[] | undefined, line: string): readonly string[] {
+  const base = prev ?? []
+  if (base.length > 0 && base[base.length - 1] === line) return base
+  const next = [...base, line]
+  return next.length > PROGRESS_CAP ? next.slice(next.length - PROGRESS_CAP) : next
+}
+
+/** Bound the stored raw result so a huge read/stdout can't balloon memory. */
+function capResult(value: unknown): unknown {
+  if (typeof value === "string") return value.length > 20000 ? `${value.slice(0, 20000)}…` : value
+  if (value && typeof value === "object") {
+    const o = value as Record<string, unknown>
+    if (typeof o.stdout === "string" && o.stdout.length > 20000) {
+      return { ...o, stdout: `${o.stdout.slice(0, 20000)}…` }
+    }
   }
+  return value
 }

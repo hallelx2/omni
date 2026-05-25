@@ -1,10 +1,14 @@
 import { Show } from "solid-js"
+import { TextAttributes } from "@opentui/core"
 import { theme } from "./theme.ts"
 import type { StatusState } from "./state.ts"
 
 /**
- * Right-rail sidebar — opencode pattern. Panel background, top-level
- * props (no style objects), session info at top, brand mark at bottom.
+ * Right-rail sidebar — opencode's `routes/session/sidebar.tsx`. Width 42,
+ * panel background, a bold title with the session id beneath, a scrollbox
+ * (themed scrollbar) of session info, and a brand mark pinned at the
+ * bottom. Omni's harness stats (probe profile, skill, tokens, verifier
+ * tally) live in the scrollbox, styled in opencode's idiom.
  */
 export function Sidebar(props: {
   status: StatusState
@@ -24,10 +28,22 @@ export function Sidebar(props: {
       paddingLeft={2}
       paddingRight={2}
     >
-      <scrollbox flexGrow={1}>
+      <scrollbox
+        flexGrow={1}
+        verticalScrollbarOptions={{
+          trackOptions: {
+            backgroundColor: theme.background,
+            foregroundColor: theme.borderActive,
+          },
+        }}
+      >
         <box flexShrink={0} gap={1} paddingRight={1} flexDirection="column">
-          <text fg={theme.text}>{props.status.modelName}</text>
-          <text fg={theme.textMuted}>{shortId(props.sessionId)}</text>
+          <box paddingRight={1} flexDirection="column">
+            <text fg={theme.text} attributes={TextAttributes.BOLD}>
+              {props.status.modelName}
+            </text>
+            <text fg={theme.textMuted}>{shortId(props.sessionId)}</text>
+          </box>
 
           <Show when={props.status.profile}>
             <box flexDirection="column">
@@ -38,6 +54,11 @@ export function Sidebar(props: {
           </Show>
 
           <box flexDirection="column" gap={1}>
+            <Stat
+              label="mode"
+              value={props.status.mode}
+              accent={props.status.mode === "plan" ? theme.warning : theme.success}
+            />
             <Stat label="cwd" value={shorten(props.cwd, 36)} />
             <Show when={props.status.skillName}>
               <Stat label="skill" value={props.status.skillName ?? ""} accent={theme.accent} />
@@ -78,7 +99,7 @@ function Pill(props: { label: string; on: boolean }) {
   )
 }
 
-function Stat(props: { label: string; value: string; accent?: string }) {
+function Stat(props: { label: string; value: string; accent?: import("@opentui/core").RGBA }) {
   return (
     <box flexDirection="column">
       <text fg={theme.textMuted}>{props.label}</text>
