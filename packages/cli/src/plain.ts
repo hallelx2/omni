@@ -12,9 +12,10 @@ import readline from "node:readline"
 import { bootstrap } from "./bootstrap.ts"
 import { renderEvent } from "./render.ts"
 import { tryDispatchCommand } from "./commands.ts"
+import { runTurn, type OrchestrationDeps, type OrchestrationSink } from "./orchestrate.ts"
 import { confirm } from "./prompts.ts"
 import { ansi } from "./ansi.ts"
-import { findMatchingSkill, filterToolsBySkill, type Skill } from "@omni/improve"
+import { findMatchingSkill, renderPlan, type Skill } from "@omni/improve"
 
 // Permission prompts in plain mode go through a readline confirm().
 const deps = await bootstrap({
@@ -26,6 +27,11 @@ const deps = await bootstrap({
     return ok ? "allow" : "deny"
   },
   verbose: true,
+  onRequestBuildConfirm: async (plan) => {
+    process.stdout.write("\n")
+    if (plan) console.log(ansi.dim("proposed plan:\n" + plan))
+    return confirm("Switch to build mode?", true)
+  },
 })
 
 // ─── Active skill state ──────────────────────────────────────────────────
@@ -50,8 +56,49 @@ if (deps.activeProfile) {
   ].join(", ")
   console.log(ansi.dim(`probed: ${flags}`))
 }
-console.log(ansi.dim("Type a message, or /help for commands, /quit to exit."))
+console.log(
+  ansi.dim(
+    `mode: ${deps.mode.get()} ${deps.mode.get() === "plan" ? "(read-only + planner)" : "(full tools + critic)"}`,
+  ),
+)
+for (const w of deps.modelWarnings) console.log(ansi.yellow(`⚠ ${w}`))
+console.log(
+  ansi.dim("Type a message, or /help for commands, /quit to exit. /plan and /build switch modes."),
+)
 console.log()
+
+// ─── Orchestration (shared planner/critic + mode-aware tool gating) ─────────
+const orchestration: OrchestrationDeps = {
+  engine: deps.engine,
+  tools: deps.tools,
+  planner: deps.planner,
+  critic: deps.critic,
+  criticAutoRetry: deps.criticAutoRetry,
+  fileTracer: deps.fileTracer,
+}
+const sink: OrchestrationSink = {
+  onEngineEvent(ev) {
+    const out = renderEvent(ev)
+    if (out) process.stdout.write(out)
+  },
+  onPlan(plan) {
+    process.stdout.write("\n" + ansi.dim("plan:\n" + renderPlan(plan)) + "\n")
+  },
+  onCritique(c, willRetry) {
+    const color = c.verdict === "fail" ? ansi.red : c.verdict === "concern" ? ansi.yellow : ansi.dim
+    const issues = c.issues.length ? "\n  - " + c.issues.join("\n  - ") : ""
+    process.stdout.write(
+      "\n" +
+        color(`critique: ${c.verdict} (${c.score.toFixed(2)})${willRetry ? " — retrying" : ""}`) +
+        ansi.dim(issues) +
+        "\n",
+    )
+  },
+  onInfo(text, tone) {
+    const color = tone === "error" ? ansi.red : tone === "warn" ? ansi.yellow : ansi.dim
+    process.stdout.write(color(text) + "\n")
+  },
+}
 
 // ─── REPL ────────────────────────────────────────────────────────────────
 const rl = readline.createInterface({
@@ -123,6 +170,8 @@ async function run(): Promise<void> {
       sessionsRepo: deps.sessions,
       messagesRepo: deps.messages,
       onContinueSession: deps.continueSession,
+      mode: deps.mode.get(),
+      onModeChange: (m, s) => deps.mode.set(m, s ?? "manual"),
     })
     let effectiveInput = input
     if (cmdResult) {
@@ -142,23 +191,18 @@ async function run(): Promise<void> {
     }
 
     currentRun = new AbortController()
-    const runOpts: { signal: AbortSignal; systemPromptPrefix?: string; enabledTools?: Set<string> } = {
-      signal: currentRun.signal,
-    }
-    if (activeSkill) {
-      runOpts.systemPromptPrefix = activeSkill.systemPrompt
-      if (activeSkill.toolsOnly) {
-        const allowed = new Set<string>()
-        for (const t of filterToolsBySkill(deps.tools, activeSkill)) allowed.add(t.name)
-        runOpts.enabledTools = allowed
-      }
-    }
     try {
-      for await (const ev of deps.engine.run(effectiveInput, runOpts)) {
-        const out = renderEvent(ev)
-        if (out) process.stdout.write(out)
-        if (deps.fileTracer) deps.fileTracer.record(ev)
-      }
+      await runTurn(
+        orchestration,
+        effectiveInput,
+        {
+          mode: deps.mode.get(),
+          activeSkill,
+          strategy: deps.agentFlags,
+          signal: currentRun.signal,
+        },
+        sink,
+      )
     } catch (e) {
       console.error(ansi.red(`\nerror: ${(e as Error).message}`))
     } finally {

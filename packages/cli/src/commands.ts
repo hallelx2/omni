@@ -9,6 +9,7 @@ import {
   renderCommand,
   type UserCommand,
 } from "./user-commands.ts"
+import type { RunMode } from "./mode.ts"
 
 export interface CommandContext {
   readonly engine: Engine
@@ -22,6 +23,8 @@ export interface CommandContext {
   readonly sessionsRepo?: SessionsRepo
   readonly messagesRepo?: MessagesRepo
   readonly onContinueSession?: (sessionId: string) => boolean
+  readonly mode?: RunMode
+  readonly onModeChange?: (mode: RunMode, source?: "manual" | "agent") => void
 }
 
 export interface SlashCommand {
@@ -315,6 +318,51 @@ const COMMANDS: readonly SlashCommand[] = [
       return {
         kind: "message",
         text: `${ansi.green("→")} skill activated: ${ansi.bold(skill.name)}`,
+      }
+    },
+  },
+  {
+    name: "mode",
+    description: "Show or switch run mode: /mode (show), /mode plan, /mode build",
+    async run(args, ctx) {
+      if (!ctx.onModeChange || !ctx.mode) {
+        return { kind: "message", text: ansi.dim("(modes not initialized)") }
+      }
+      const arg = parseArgs(args)[0]?.toLowerCase()
+      if (!arg) {
+        const note = ctx.mode === "plan" ? "read-only + planner" : "full tools + critic"
+        return { kind: "message", text: `mode: ${ansi.bold(ctx.mode)} ${ansi.dim("(" + note + ")")}` }
+      }
+      if (arg !== "plan" && arg !== "build") {
+        return { kind: "message", text: ansi.red(`unknown mode: ${arg}. Use 'plan' or 'build'.`) }
+      }
+      ctx.onModeChange(arg, "manual")
+      const note =
+        arg === "plan" ? "read-only tools: read_file, glob, grep, web_fetch" : "full tool access"
+      return { kind: "message", text: `${ansi.green("→")} ${ansi.bold(arg)} mode ${ansi.dim("(" + note + ")")}` }
+    },
+  },
+  {
+    name: "plan",
+    description: "Switch to plan mode (read-only tools + planner)",
+    async run(_args, ctx) {
+      if (!ctx.onModeChange) return { kind: "message", text: ansi.dim("(modes not initialized)") }
+      ctx.onModeChange("plan", "manual")
+      return {
+        kind: "message",
+        text: `${ansi.green("→")} ${ansi.bold("plan")} mode ${ansi.dim("(read-only tools: read_file, glob, grep, web_fetch)")}`,
+      }
+    },
+  },
+  {
+    name: "build",
+    description: "Switch to build mode (full tools + critic)",
+    async run(_args, ctx) {
+      if (!ctx.onModeChange) return { kind: "message", text: ansi.dim("(modes not initialized)") }
+      ctx.onModeChange("build", "manual")
+      return {
+        kind: "message",
+        text: `${ansi.green("→")} ${ansi.bold("build")} mode ${ansi.dim("(full tool access)")}`,
       }
     },
   },

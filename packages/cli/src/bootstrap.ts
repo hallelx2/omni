@@ -43,6 +43,7 @@ import {
 import {
   bash, readFile, writeFile, edit, multiEdit, applyPatch, glob, grep, webFetch, MCPManager,
   PatchAppliesVerifier, FileParsesVerifier, TypecheckVerifier, TestVerifier,
+  makeDispatchAgentsTool,
 } from "@omni/tools"
 import { Storage, SessionsRepo, MessagesRepo, EventsRepo, AuditRepo, ProfilesRepo } from "@omni/storage"
 import {
@@ -51,10 +52,18 @@ import {
   probeModelCached,
   adapt,
   loadSkills,
+  loadAgents,
   setFrontmatterParser,
+  setAgentFrontmatterParser,
+  Planner,
+  Critic,
   type Skill,
+  type Agent,
 } from "@omni/improve"
 import { parseFrontmatter } from "./user-commands.ts"
+import { resolveAdapter, makeAgentTool, agentToolName, structuredConfigFor, type BuildAgentDeps } from "./agents-runtime.ts"
+import { createModeHolder, type ModeHolder, type RunMode } from "./mode.ts"
+import { createRequestBuildTool } from "./requestBuildTool.ts"
 import { loadHooks } from "./hook-loader.ts"
 import { loadDotenv } from "./env.ts"
 import { ansi } from "./ansi.ts"
@@ -76,6 +85,17 @@ export interface BootstrapOptions {
    * like ask_user that need access to the TUI's modal queue).
    */
   readonly extraTools?: readonly Tool[]
+  /**
+   * Human gate for the agent-initiated plan→build switch (request_build_mode).
+   * Resolves true to allow the switch. Omitted → auto-approve.
+   */
+  readonly onRequestBuildConfirm?: (plan: string | null) => Promise<boolean>
+  /**
+   * Progress callback for surfaces that paint a boot screen while bootstrap
+   * runs in the background (the TUI). Called at the slow milestones —
+   * connecting tools and probing the model.
+   */
+  readonly onProgress?: (step: string) => void
 }
 
 export interface BootstrapResult {
@@ -95,6 +115,14 @@ export interface BootstrapResult {
   readonly skills: Map<string, Skill>
   readonly skillsEnabled: ReadonlySet<string>
   readonly skillAutoRoute: boolean
+  readonly agents: Map<string, Agent>
+  readonly mode: ModeHolder
+  readonly planner: Planner
+  readonly critic: Critic
+  readonly criticAutoRetry: boolean
+  readonly agentFlags: { readonly usePlanner: boolean; readonly useCritic: boolean }
+  /** Non-fatal model-resolution warnings (e.g. missing key → fell back to main model). */
+  readonly modelWarnings: readonly string[]
   readonly sessions: SessionsRepo
   readonly messages: MessagesRepo
   readonly events: EventsRepo
@@ -107,6 +135,7 @@ export interface BootstrapResult {
 
 export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapResult> {
   const log = opts.verbose ? (line: string) => console.log(line) : () => {}
+  const progress = opts.onProgress ?? (() => {})
 
   // ─── Setup: home dir, .env, config ───────────────────────────────────────
   ensureOmniHome()
@@ -119,6 +148,10 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
   loadDotenv([repoEnv, resolve(process.cwd(), ".env"), resolve(paths.home, ".env")])
   const wsPaths = workspacePaths()
   setFrontmatterParser((raw) => {
+    const r = parseFrontmatter(raw)
+    return { frontmatter: r.frontmatter as Record<string, unknown>, body: r.body }
+  })
+  setAgentFrontmatterParser((raw) => {
     const r = parseFrontmatter(raw)
     return { frontmatter: r.frontmatter as Record<string, unknown>, body: r.body }
   })
@@ -139,6 +172,7 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
 
   // ─── MCP ────────────────────────────────────────────────────────────────
   const mcpManager = new MCPManager(config.mcp?.servers ?? {})
+  if (Object.keys(config.mcp?.servers ?? {}).length > 0) progress("connecting tools…")
   await mcpManager.connectAll()
   for (const s of mcpManager.status()) {
     if (s.status === "connected") {
@@ -151,18 +185,93 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
   // ─── Adapter selection ──────────────────────────────────────────────────
   const { adapter, name: modelName } = pickAdapter(config)
 
-  // ─── Tools ──────────────────────────────────────────────────────────────
-  const tools: readonly Tool[] = [
+  // ─── Tools: base set, then agents, dispatch, modes ───────────────────────
+  // The base set is what subagent CHILDREN draw from. The main engine also
+  // gets the agent tools, the dispatch fan-out tool, and request_build_mode —
+  // none of which children receive (prevents agent→agent recursion).
+  const builtinTools: Tool[] = [
     bash, readFile, writeFile, edit, multiEdit, applyPatch, glob, grep, webFetch,
     ...mcpManager.tools(),
+  ]
+
+  const agentsEnabled = config.agents?.enabled !== false
+  const agents = loadAgents()
+  for (const name of config.agents?.disabled ?? []) agents.delete(name)
+
+  // Per-role model resolution. Warnings (e.g. a missing API key for an
+  // override) are collected here and surfaced by the surface at startup —
+  // NOT verbose-gated, so the TUI shows them too.
+  const modelWarnings: string[] = []
+  const adapterCache = new Map<string, ModelAdapter>()
+  const resolveModel = (ref?: string): ModelAdapter =>
+    resolveAdapter(ref, {
+      config,
+      fallback: adapter,
+      cache: adapterCache,
+      warn: (m) => modelWarnings.push(m),
+    })
+  const agentBuildDeps: BuildAgentDeps = {
+    tools: builtinTools,
+    config,
+    resolveModel,
+    cwd: process.cwd(),
+  }
+
+  const reservedNames = new Set<string>([
+    ...builtinTools.map((t) => t.name),
+    "dispatch_agents",
+    "request_build_mode",
+  ])
+  const agentToolMap = new Map<string, ReturnType<typeof makeAgentTool>>()
+  const agentTools: Tool[] = []
+  if (agentsEnabled) {
+    for (const agent of agents.values()) {
+      const tname = agentToolName(agent.name)
+      if (reservedNames.has(tname)) {
+        log(ansi.dim(`agent "${agent.name}" skipped: tool name "${tname}" is reserved`))
+        continue
+      }
+      const t = makeAgentTool(agent, agentBuildDeps)
+      reservedNames.add(tname)
+      agentTools.push(t)
+      agentToolMap.set(agent.name, t)
+    }
+  }
+  // Eagerly resolve per-agent model overrides so a missing key surfaces at
+  // startup (warming the shared cache) rather than silently on first dispatch.
+  for (const a of agents.values()) if (a.model) resolveModel(a.model)
+  const dispatchTool =
+    agentsEnabled && agentToolMap.size > 0
+      ? makeDispatchAgentsTool({
+          getAgentTool: (name) => agentToolMap.get(name),
+          listAgents: () => [...agentToolMap.keys()],
+          defaultMaxConcurrency: config.agents?.maxConcurrency,
+        })
+      : null
+
+  const mode = createModeHolder(config.modes?.default ?? "build")
+  const requestBuild = createRequestBuildTool(
+    mode,
+    opts.onRequestBuildConfirm ? { confirm: opts.onRequestBuildConfirm } : undefined,
+  )
+
+  const tools: readonly Tool[] = [
+    ...builtinTools,
+    ...agentTools,
+    ...(dispatchTool ? [dispatchTool] : []),
+    requestBuild,
     ...(opts.extraTools ?? []),
   ]
+  if (agentTools.length > 0) {
+    log(ansi.dim(`agents: ${[...agentToolMap.keys()].join(", ")}`))
+  }
 
   // ─── Probe + adapt ──────────────────────────────────────────────────────
   const profileCache = new SqliteProfileCache(profiles)
   let activeProfile: BootstrapResult["activeProfile"] = null
   let activeStrategy: BootstrapResult["activeStrategy"] = null
   if (modelName !== "mock") {
+    progress(`probing ${modelName}…`)
     try {
       activeProfile = await probeModelCached(adapter, profileCache, {
         maxAgeMs: 24 * 60 * 60 * 1000, // 24h
@@ -171,6 +280,36 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
     } catch (e) {
       log(ansi.dim(`probe skipped: ${(e as Error).message}`))
     }
+  }
+
+  // ─── Planner / Critic (back plan/build mode; per-role model overrides) ────
+  // Structured output (generateObject) is enabled when the resolved model
+  // exposes an AI SDK languageModel: trusted for frontier overrides, gated on
+  // the probe for the main model. Both fall back to text parsing automatically.
+  const plannerAdapter = resolveModel(config.agents?.planner?.model)
+  const criticAdapter = resolveModel(config.agents?.critic?.model)
+  const structured = (m: ModelAdapter) =>
+    structuredConfigFor(m, {
+      isMain: m === adapter,
+      mainSupportsStructured: activeProfile?.supportsStructuredOutput,
+    })
+  const errText = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
+  const planner = new Planner(plannerAdapter, {
+    maxSteps: config.agents?.planner?.maxSteps,
+    ...structured(plannerAdapter),
+    onStructuredFallback: (cause) =>
+      log(ansi.dim(`planner: structured output unavailable; using text (${errText(cause)})`)),
+  })
+  const critic = new Critic(criticAdapter, {
+    retryBelow: config.agents?.critic?.retryBelow,
+    ...structured(criticAdapter),
+    onStructuredFallback: (cause) =>
+      log(ansi.dim(`critic: structured output unavailable; using text (${errText(cause)})`)),
+  })
+  const criticAutoRetry = config.agents?.critic?.autoRetry ?? false
+  const agentFlags = {
+    usePlanner: config.agents?.planner?.enabled ?? activeStrategy?.usePlanner ?? false,
+    useCritic: config.agents?.critic?.enabled ?? activeStrategy?.useCritic ?? false,
   }
 
   // ─── Permissions ────────────────────────────────────────────────────────
@@ -197,6 +336,7 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
       verbose: activeProfile?.verboseByDefault ?? false,
     })
 
+  progress("starting engine…")
   const engine = new Engine({
     model: adapter,
     tools,
@@ -303,6 +443,13 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
     skills,
     skillsEnabled,
     skillAutoRoute,
+    agents,
+    mode,
+    planner,
+    critic,
+    criticAutoRetry,
+    agentFlags,
+    modelWarnings,
     sessions,
     messages,
     events,
