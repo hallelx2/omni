@@ -409,13 +409,13 @@ export const shout: Tool<{ text: string }, { result: string }> = {
 
 - **Engine** — `engine.ts` is ~440 lines (could split executor); no property test proving aborted runs never emit `tool.result`
 - **Adapters** — rate-limit retry untested live; Google adapter not run end-to-end; Anthropic extended thinking not e2e-verified
-- **Tools** — no `apply_patch` (unified diff) tool yet; `grep` ripgrep path covered only when `rg` happens to be installed during the test run; `web_fetch` markdown untested for complex layouts
-- **Context** — no summarization-based compaction yet; no semantic recall; one tokenizer for all models (should be per-adapter)
-- **Permissions** — no allowlist-default mode; no per-path bash restrictions (e.g. bash allowed only within cwd)
-- **Third brain** — Memory uses linear-scan keyword recall, no embeddings
+- **Tools** — `grep` ripgrep path covered only when `rg` happens to be installed during the test run; `web_fetch` markdown untested for complex layouts
+- **Context** — `SummarizingStrategy` exists but the wired default is still `TokenBudgetStrategy` (drops messages, doesn't summarize); no semantic recall in the loop; one tokenizer for all models (should be per-adapter)
+- **Permissions** — destructive bash is now denied by default on the main engine, with opt-in workspace confinement (`restrictToWorkspace`) and an `allowlistGate` preset; the bash path-confinement is heuristic, not a true per-command sandbox
+- **Third brain** — `VectorMemory` (embedding recall) exists but isn't wired into the loop yet; the base `Memory` is linear-scan keyword recall
 - **Self-improvement** — probe/adapt/evolve are *built* but not yet *wired into* the CLI flow as the default loop
 - **Storage** — no backup/restore command; forward-only migrations
-- **CLI** — readline not Solid+opentui (deferred); slash arg parsing is space-split (no quoted strings); no `/sessions` continue command yet
+- **CLI** — slash arg parsing is space-split (no quoted strings); no `/sessions` continue command yet
 - **Surfaces** — desktop and vscode are scaffolds (architecture plans in their `index.ts`); web uses `window.confirm` for permissions
 - **Testing** — no load test; no chaos/fuzz on adapter translation layer
 - **Docs** — no `examples/` directory; no FAQ
