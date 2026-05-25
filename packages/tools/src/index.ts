@@ -31,6 +31,9 @@ export type { GrepMatch, GrepResult } from "./grep.ts"
 export { webFetch } from "./web_fetch.ts"
 export type { WebFetchResult } from "./web_fetch.ts"
 
+export { makeDispatchAgentsTool, MAX_AGENTS, PER_CHILD_RESULT_BYTES } from "./dispatch.ts"
+export type { DispatchDeps, DispatchAgentsResult, DispatchAgentItemResult } from "./dispatch.ts"
+
 export { MCPClient } from "./mcp.ts"
 export type { MCPClientConfig, StdioMCPConfig, HTTPMCPConfig } from "./mcp.ts"
 
