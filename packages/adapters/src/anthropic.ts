@@ -117,4 +117,8 @@ export class AnthropicAdapter implements ModelAdapter {
     })
     yield* withCost(translateStream(result.fullStream), this.capabilities)
   }
+
+  languageModel(): unknown {
+    return this._model
+  }
 }

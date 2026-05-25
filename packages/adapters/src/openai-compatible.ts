@@ -81,4 +81,8 @@ export class OpenAICompatibleAdapter implements ModelAdapter {
 
     yield* withCost(translateStream(result.fullStream), this.capabilities)
   }
+
+  languageModel(): unknown {
+    return this._model
+  }
 }

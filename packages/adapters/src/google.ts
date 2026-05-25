@@ -78,4 +78,8 @@ export class GoogleAdapter implements ModelAdapter {
     })
     yield* withCost(translateStream(result.fullStream), this.capabilities)
   }
+
+  languageModel(): unknown {
+    return this._model
+  }
 }

@@ -222,6 +222,16 @@ export interface ModelAdapter {
   readonly name: string
   readonly capabilities: ModelCapabilities
   complete(params: CompleteParams): AsyncIterable<ModelEvent>
+  /**
+   * The underlying provider model object (an AI SDK `LanguageModel`), when the
+   * adapter wraps one. Enables structured-output features (`generateObject`) in
+   * the planner/critic. Returns `undefined`/absent for adapters without one
+   * (e.g. the mock adapter), which keeps them on the text-parsing path.
+   *
+   * Typed as `unknown` so `@omni/core` stays decoupled from the `ai` package;
+   * consumers (`@omni/improve`) cast to the AI SDK model type.
+   */
+  languageModel?(): unknown
 }
 
 // ─── Session ────────────────────────────────────────────────────────────────
