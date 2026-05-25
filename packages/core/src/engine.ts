@@ -415,45 +415,65 @@ export class Engine {
         return { assistantText, toolCalls, reasoningText, error }
       }
 
-      for await (const ev of stream) {
-        if (signal.aborted) {
-          error = classifyError(new DOMException("Aborted", "AbortError"))
-          break
+      // Race each token against the abort signal. A plain `for await` only
+      // re-checks `signal.aborted` when a *new* token arrives, so a hung or
+      // very slow stream can't be interrupted (the user hits esc and nothing
+      // happens). Racing breaks the instant the signal fires, regardless of
+      // whether the underlying stream is producing anything.
+      const iterator = stream[Symbol.asyncIterator]()
+      const aborted = new Promise<"aborted">((resolve) => {
+        if (signal.aborted) resolve("aborted")
+        else signal.addEventListener("abort", () => resolve("aborted"), { once: true })
+      })
+      try {
+        while (true) {
+          if (signal.aborted) break
+          const next = await Promise.race([iterator.next(), aborted])
+          if (next === "aborted") break
+          if (next.done) break
+          const ev = next.value
+          switch (ev.type) {
+            case "delta":
+              assistantText += ev.text
+              yield { type: "model.delta", text: ev.text }
+              break
+            case "thinking_delta":
+              reasoningText += ev.text
+              yield { type: "model.thinking_delta", text: ev.text }
+              break
+            case "tool_call_start":
+              yield { type: "model.tool_call_start", call: ev.call }
+              break
+            case "tool_call_args_delta":
+              yield {
+                type: "model.tool_call_args_delta",
+                callId: ev.callId,
+                argsDelta: ev.argsDelta,
+              }
+              break
+            case "tool_call":
+              toolCalls.push(ev.call)
+              yield { type: "model.tool_call_done", call: ev.call }
+              break
+            case "done":
+              if (ev.usage) {
+                this._cumulative = accumulateUsage(this._cumulative, ev.usage)
+                yield { type: "engine.usage", delta: ev.usage, total: this._cumulative }
+              }
+              yield { type: "model.done", finishReason: ev.finishReason, usage: ev.usage }
+              break
+            case "error":
+              error = classifyError(ev.error)
+              break
+          }
         }
-        switch (ev.type) {
-          case "delta":
-            assistantText += ev.text
-            yield { type: "model.delta", text: ev.text }
-            break
-          case "thinking_delta":
-            reasoningText += ev.text
-            yield { type: "model.thinking_delta", text: ev.text }
-            break
-          case "tool_call_start":
-            yield { type: "model.tool_call_start", call: ev.call }
-            break
-          case "tool_call_args_delta":
-            yield {
-              type: "model.tool_call_args_delta",
-              callId: ev.callId,
-              argsDelta: ev.argsDelta,
-            }
-            break
-          case "tool_call":
-            toolCalls.push(ev.call)
-            yield { type: "model.tool_call_done", call: ev.call }
-            break
-          case "done":
-            if (ev.usage) {
-              this._cumulative = accumulateUsage(this._cumulative, ev.usage)
-              yield { type: "engine.usage", delta: ev.usage, total: this._cumulative }
-            }
-            yield { type: "model.done", finishReason: ev.finishReason, usage: ev.usage }
-            break
-          case "error":
-            error = classifyError(ev.error)
-            break
-        }
+      } finally {
+        // Best-effort: close the source stream (runs the adapter's cleanup,
+        // which aborts the underlying fetch) so we don't leak a live request.
+        void Promise.resolve(iterator.return?.(undefined)).catch(() => {})
+      }
+      if (signal.aborted && !error) {
+        error = classifyError(new DOMException("Aborted", "AbortError"))
       }
     } catch (e) {
       error = classifyError(e)
