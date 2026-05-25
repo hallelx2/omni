@@ -7,12 +7,20 @@ import {
   StaticPermissions,
   AskPermissions,
   RuleBasedPermissions,
+  GuardedPermissions,
   AuditingPermissions,
   InMemoryAuditLog,
   looksDestructive,
+  isWithinRoot,
+  bashEscapesRoot,
+  workspaceGuards,
+  allowlistGate,
   type Tool,
   type ToolCall,
 } from "../src/index.ts"
+
+const ROOT = process.platform === "win32" ? "C:/work/proj" : "/work/proj"
+const outsidePath = (p: string) => (process.platform === "win32" ? "C:" + p : p)
 
 const tool = (name: string, permission: "auto" | "ask" | "deny" = "ask"): Tool => ({
   name,
@@ -161,5 +169,127 @@ describe("existing gates (regression)", () => {
     await g.check(tool("a", "auto"), call("a"))
     await g.check(tool("b", "deny"), call("b"))
     expect(asked).toBe(0)
+  })
+})
+
+describe("isWithinRoot", () => {
+  test("equal, relative, and nested paths are inside", () => {
+    expect(isWithinRoot(ROOT, ROOT)).toBe(true)
+    expect(isWithinRoot(ROOT, "src/index.ts")).toBe(true)
+    expect(isWithinRoot(ROOT, "a/b/c/deep.ts")).toBe(true)
+    expect(isWithinRoot(ROOT, ROOT + "/src/x.ts")).toBe(true)
+  })
+
+  test("'..' and absolute-outside paths escape", () => {
+    expect(isWithinRoot(ROOT, "../other/x")).toBe(false)
+    expect(isWithinRoot(ROOT, "../../etc/passwd")).toBe(false)
+    expect(isWithinRoot(ROOT, outsidePath("/etc/passwd"))).toBe(false)
+  })
+
+  test("sibling sharing a name prefix is not contained", () => {
+    // /work/proj must NOT contain /work/proj-evil
+    expect(isWithinRoot(ROOT, ROOT + "-evil/x")).toBe(false)
+  })
+})
+
+describe("bashEscapesRoot", () => {
+  const esc = bashEscapesRoot(ROOT)
+
+  test("safe relative commands pass", () => {
+    expect(esc({ command: "ls -la" })).toBe(false)
+    expect(esc({ command: "cat ./src/x.ts" })).toBe(false)
+    expect(esc({ command: "cd src && bun test" })).toBe(false)
+    expect(esc({ command: "git status" })).toBe(false)
+  })
+
+  test("home references escape", () => {
+    expect(esc({ command: "cat ~/secrets" })).toBe(true)
+    expect(esc({ command: "echo $HOME" })).toBe(true)
+  })
+
+  test("cd outside the root escapes", () => {
+    expect(esc({ command: "cd .. && rm x" })).toBe(true)
+    expect(esc({ command: "cd /etc" })).toBe(true)
+  })
+
+  test("absolute path outside escapes; inside is allowed", () => {
+    expect(esc({ command: "cat " + outsidePath("/etc/passwd") })).toBe(true)
+    expect(esc({ command: "cat " + ROOT + "/src/x.ts" })).toBe(false)
+  })
+
+  test("non-string command is safe", () => {
+    expect(esc({})).toBe(false)
+    expect(esc(null)).toBe(false)
+  })
+})
+
+describe("GuardedPermissions", () => {
+  test("first matching guard wins; otherwise delegates to inner", async () => {
+    const g = new GuardedPermissions(new AllowAllPermissions(), [
+      { tool: "bash", when: looksDestructive, decision: "deny" },
+      { tool: "read_file", decision: "allow" },
+    ])
+    expect(await g.check(tool("bash"), call("bash", { command: "rm -rf /" }))).toBe("deny")
+    expect(await g.check(tool("bash"), call("bash", { command: "ls" }))).toBe("allow")
+    expect(await g.check(tool("read_file"), call("read_file"))).toBe("allow")
+  })
+
+  test("delegates to inner when no guard matches", async () => {
+    const g = new GuardedPermissions(new DenyAllPermissions(), [{ tool: "read_file", decision: "allow" }])
+    expect(await g.check(tool("web_fetch"), call("web_fetch"))).toBe("deny")
+  })
+
+  test("a throwing predicate is treated as no-match", async () => {
+    const g = new GuardedPermissions(new AllowAllPermissions(), [
+      { tool: "bash", when: () => { throw new Error("boom") }, decision: "deny" },
+    ])
+    expect(await g.check(tool("bash"), call("bash"))).toBe("allow")
+  })
+})
+
+describe("workspaceGuards", () => {
+  test("denies destructive bash by default, allows benign", async () => {
+    const g = new GuardedPermissions(new AllowAllPermissions(), workspaceGuards({}))
+    expect(await g.check(tool("bash"), call("bash", { command: "rm -rf /" }))).toBe("deny")
+    expect(await g.check(tool("bash"), call("bash", { command: "ls" }))).toBe("allow")
+  })
+
+  test("denyDestructiveBash:false yields no guards", () => {
+    expect(workspaceGuards({ denyDestructiveBash: false })).toHaveLength(0)
+  })
+
+  test("restrictToRoot confines file tools and bash", async () => {
+    const g = new GuardedPermissions(new AllowAllPermissions(), workspaceGuards({ restrictToRoot: true, root: ROOT }))
+    expect(await g.check(tool("write_file"), call("write_file", { path: "src/x.ts" }))).toBe("allow")
+    expect(await g.check(tool("write_file"), call("write_file", { path: "../escape.ts" }))).toBe("deny")
+    expect(await g.check(tool("read_file"), call("read_file", { path: outsidePath("/etc/p") }))).toBe("deny")
+    expect(await g.check(tool("bash"), call("bash", { command: "cat /etc/passwd" }))).toBe("deny")
+  })
+})
+
+describe("allowlistGate", () => {
+  test("permits only listed tools, denies the rest", async () => {
+    const g = allowlistGate({ allow: ["read_file", "glob", "grep"] })
+    expect(await g.check(tool("read_file"), call("read_file"))).toBe("allow")
+    expect(await g.check(tool("glob"), call("glob"))).toBe("allow")
+    expect(await g.check(tool("write_file"), call("write_file"))).toBe("deny")
+    expect(await g.check(tool("bash"), call("bash", { command: "ls" }))).toBe("deny")
+  })
+
+  test("destructive bash stays denied even when bash is allowed", async () => {
+    const g = allowlistGate({ allow: ["bash"] })
+    expect(await g.check(tool("bash"), call("bash", { command: "ls" }))).toBe("allow")
+    expect(await g.check(tool("bash"), call("bash", { command: "rm -rf /" }))).toBe("deny")
+  })
+
+  test("allowDestructiveBash re-permits it", async () => {
+    const g = allowlistGate({ allow: ["bash"], allowDestructiveBash: true })
+    expect(await g.check(tool("bash"), call("bash", { command: "rm -rf /" }))).toBe("allow")
+  })
+
+  test("root confines allowed file tools", async () => {
+    const g = allowlistGate({ allow: ["read_file"], root: ROOT })
+    expect(await g.check(tool("read_file"), call("read_file", { path: "src/x.ts" }))).toBe("allow")
+    expect(await g.check(tool("read_file"), call("read_file", { path: "../x.ts" }))).toBe("deny")
   })
 })

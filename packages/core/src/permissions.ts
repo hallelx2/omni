@@ -1,3 +1,4 @@
+import { resolve } from "node:path"
 import type { Tool, ToolCall } from "./types.ts"
 
 /** Final decision returned by a {@link PermissionGate}. */
@@ -164,6 +165,160 @@ export function looksDestructive(args: unknown): boolean {
   const cmd = (args as { command?: unknown }).command
   if (typeof cmd !== "string") return false
   return DESTRUCTIVE_PATTERNS.some((p) => p.test(cmd))
+}
+
+// ─── Workspace confinement (per-path file + bash guards) ─────────────────────
+
+/** Tool → the args field that carries a filesystem path (read/mutation tools). */
+const PATH_FIELD_BY_TOOL: Readonly<Record<string, string>> = {
+  read_file: "path",
+  write_file: "path",
+  edit: "path",
+  multi_edit: "path",
+}
+
+function normalizePath(p: string): string {
+  let s = resolve(p).replace(/\\/g, "/").replace(/\/+$/, "")
+  if (process.platform === "win32") s = s.toLowerCase()
+  return s.length > 0 ? s : "/"
+}
+
+/**
+ * True when `target` resolves inside `root` (or equals it). Relative targets
+ * are resolved against `root` — the confinement root, which the engine sets to
+ * the workspace/cwd. Comparison is separator- and (on Windows) case-normalized
+ * and respects path boundaries, so `/srv/app` does NOT contain `/srv/app-evil`.
+ */
+export function isWithinRoot(root: string, target: string): boolean {
+  const r = normalizePath(root)
+  const t = normalizePath(resolve(root, target))
+  return t === r || t.startsWith(r + "/")
+}
+
+/** Deny predicate: the tool's path argument resolves outside `root`. */
+function pathArgEscapes(root: string, field: string): (args: unknown) => boolean {
+  return (args) => {
+    if (typeof args !== "object" || args === null) return false
+    const v = (args as Record<string, unknown>)[field]
+    if (typeof v !== "string" || v.length === 0) return false
+    return !isWithinRoot(root, v)
+  }
+}
+
+/**
+ * Best-effort deny predicate for `bash` commands that reach outside `root`.
+ * Shell commands are opaque, so this is a heuristic — intentionally strict,
+ * since workspace confinement is opt-in. It flags `~`/`$HOME`, any `cd`/`pushd`
+ * whose target escapes `root`, and absolute-path tokens that resolve outside
+ * `root`. False positives are possible; the model can rephrase using a relative
+ * path inside the workspace.
+ */
+export function bashEscapesRoot(root: string): (args: unknown) => boolean {
+  return (args) => {
+    if (typeof args !== "object" || args === null) return false
+    const cmd = (args as { command?: unknown }).command
+    if (typeof cmd !== "string" || cmd.length === 0) return false
+    if (/\$HOME\b|\$\{HOME\}/.test(cmd)) return true
+
+    const tokens = cmd
+      .split(/[\s;|&<>()]+/)
+      .map((t) => t.replace(/^['"]+|['"]+$/g, ""))
+      .filter((t) => t.length > 0)
+
+    for (let i = 0; i < tokens.length; i++) {
+      const tok = tokens[i]!
+      if (tok === "~" || tok.startsWith("~/") || tok.startsWith("~\\")) return true
+      const isAbs = /^(?:[A-Za-z]:[\\/]|[\\/])/.test(tok)
+      if (isAbs && !isWithinRoot(root, tok)) return true
+      if ((tok === "cd" || tok === "pushd") && tokens[i + 1]) {
+        const target = tokens[i + 1]!
+        if (target.startsWith("~") || !isWithinRoot(root, target)) return true
+      }
+    }
+    return false
+  }
+}
+
+export interface WorkspaceGuardOptions {
+  /** Deny obviously destructive bash (rm -rf /, fork bombs, curl|sh). Default true. */
+  readonly denyDestructiveBash?: boolean
+  /** Confine file tools + bash to `root`. Default false (needs `root`). */
+  readonly restrictToRoot?: boolean
+  /** Confinement root (the workspace/cwd). Required when `restrictToRoot`. */
+  readonly root?: string
+}
+
+/**
+ * Build the deny-only guard rules that confine an agent to a workspace. Layer
+ * these over any base gate with {@link GuardedPermissions}: the destructive-bash
+ * guard is on by default; path confinement is opt-in.
+ */
+export function workspaceGuards(opts: WorkspaceGuardOptions): PermissionRule[] {
+  const rules: PermissionRule[] = []
+  if (opts.denyDestructiveBash !== false) {
+    rules.push({ tool: "bash", when: looksDestructive, decision: "deny" })
+  }
+  if (opts.restrictToRoot && opts.root) {
+    for (const [tool, field] of Object.entries(PATH_FIELD_BY_TOOL)) {
+      rules.push({ tool, when: pathArgEscapes(opts.root, field), decision: "deny" })
+    }
+    rules.push({ tool: "bash", when: bashEscapesRoot(opts.root), decision: "deny" })
+  }
+  return rules
+}
+
+/**
+ * Compose deny/allow guard rules in front of a base gate. The first guard whose
+ * tool + `when` matches wins; if none match, the decision delegates to `inner`.
+ * Put safety denies (destructive, out-of-root) before any convenience allows so
+ * they can't be overridden.
+ *
+ * @example Deny destructive bash, auto-allow reads, otherwise ask
+ * ```ts
+ * new GuardedPermissions(askGate, [
+ *   { tool: "bash", when: looksDestructive, decision: "deny" },
+ *   { tool: "read_file", decision: "allow" },
+ * ])
+ * ```
+ */
+export class GuardedPermissions implements PermissionGate {
+  constructor(
+    private readonly inner: PermissionGate,
+    private readonly guards: readonly PermissionRule[],
+  ) {}
+  async check(tool: Tool, call: ToolCall): Promise<PermissionDecision> {
+    for (const g of this.guards) {
+      if (!matchTool(g.tool, tool.name)) continue
+      if (g.when && !safePredicate(g.when, call.args)) continue
+      return g.decision
+    }
+    return this.inner.check(tool, call)
+  }
+}
+
+export interface AllowlistOptions {
+  /** Tool names that are permitted; everything else is denied. */
+  readonly allow: readonly string[]
+  /** Permit destructive bash even when `bash` is allowed. Default false. */
+  readonly allowDestructiveBash?: boolean
+  /** Optional workspace root to also confine file tools + bash. */
+  readonly root?: string
+}
+
+/**
+ * A deny-by-default gate that permits only the named tools — the building block
+ * for an "allowlist" permission posture (CI / unattended automation).
+ * Destructive bash stays denied even when `bash` is allowed (unless
+ * `allowDestructiveBash`); pass `root` to confine file tools + bash to it.
+ */
+export function allowlistGate(opts: AllowlistOptions): PermissionGate {
+  const guards = workspaceGuards({
+    denyDestructiveBash: !opts.allowDestructiveBash,
+    restrictToRoot: Boolean(opts.root),
+    root: opts.root,
+  })
+  const allows: PermissionRule[] = opts.allow.map((tool) => ({ tool, decision: "allow" }))
+  return new GuardedPermissions(new DenyAllPermissions(), [...guards, ...allows])
 }
 
 // ─── Auditing wrapper ──────────────────────────────────────────────────────

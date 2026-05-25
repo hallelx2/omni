@@ -42,10 +42,15 @@ export {
   StaticPermissions,
   AskPermissions,
   RuleBasedPermissions,
+  GuardedPermissions,
   AuditingPermissions,
   looksDestructive,
+  isWithinRoot,
+  bashEscapesRoot,
+  workspaceGuards,
+  allowlistGate,
 } from "./permissions.ts"
-export type { PermissionRule } from "./permissions.ts"
+export type { PermissionRule, WorkspaceGuardOptions, AllowlistOptions } from "./permissions.ts"
 
 export {
   InMemoryAuditLog,
