@@ -15,6 +15,8 @@ import {
   GuardedPermissions,
   workspaceGuards,
   TokenBudgetStrategy,
+  SummarizingStrategy,
+  SlidingWindowStrategy,
   ContextManager,
   TiktokenTokenizer,
   AuditingPermissions,
@@ -31,6 +33,7 @@ import {
   type Verifier,
   type PermissionGate,
   type PermissionRule,
+  type ContextStrategy,
   type OmniPaths,
   type WorkspacePaths,
 } from "@omni/core"
@@ -348,8 +351,10 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
     maxIterations: config.maxIterations ?? activeStrategy?.maxIterations ?? 12,
     enableReActFallback: config.enableReActFallback ?? activeStrategy?.enableReActFallback ?? true,
     contextManager: new ContextManager(
-      new TokenBudgetStrategy(new TiktokenTokenizer(), {
-        reserveTokensForOutput: activeStrategy?.reserveOutputTokens ?? 4_096,
+      buildContextStrategy(config, {
+        summariser: adapter,
+        resolveModel,
+        reserveOutputTokens: activeStrategy?.reserveOutputTokens ?? 4_096,
       }),
     ),
     tracer: (event) => {
@@ -538,6 +543,42 @@ function pickAdapter(config: Config): { adapter: ModelAdapter; name: string } {
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
+
+/**
+ * Select the context-window strategy from config. Default "budget" drops the
+ * oldest messages when over the token budget; "summarize" compacts older turns
+ * with the model instead (and falls back to budget if a summarise call fails);
+ * "sliding" keeps only the most recent messages. The summariser defaults to the
+ * main model but can be pointed at a cheaper per-role model.
+ */
+export function buildContextStrategy(
+  config: Config,
+  deps: {
+    readonly summariser: ModelAdapter
+    readonly resolveModel: (ref?: string) => ModelAdapter
+    readonly reserveOutputTokens: number
+  },
+): ContextStrategy {
+  const tokenizer = new TiktokenTokenizer()
+  const budget = new TokenBudgetStrategy(tokenizer, {
+    reserveTokensForOutput: deps.reserveOutputTokens,
+  })
+  const c = config.context
+  switch (c?.compaction) {
+    case "sliding":
+      return new SlidingWindowStrategy()
+    case "summarize":
+      return new SummarizingStrategy({
+        summariser: c.summarizerModel ? deps.resolveModel(c.summarizerModel) : deps.summariser,
+        inner: budget,
+        tokenizer,
+        ...(c.keepRecent !== undefined ? { keepRecent: c.keepRecent } : {}),
+        ...(c.summarizeAboveTokens !== undefined ? { summariseAboveTokens: c.summarizeAboveTokens } : {}),
+      })
+    default:
+      return budget
+  }
+}
 
 function buildPermissions(opts: BootstrapOptions, audit: AuditRepo, config: Config): PermissionGate {
   const mode = opts.askMode ?? "allow"

@@ -46,6 +46,24 @@ export const ConfigSchema = z.object({
     })
     .optional(),
 
+  /** Context-window compaction strategy and tuning. */
+  context: z
+    .object({
+      /**
+       * How history is fit into the window. Default "budget" (drops the oldest
+       * messages). "summarize" compacts older turns with the model instead of
+       * dropping them; "sliding" keeps only the most recent messages.
+       */
+      compaction: z.enum(["summarize", "budget", "sliding"]).optional(),
+      /** Model ref for the summariser (e.g. "anthropic:claude…"); defaults to the main model. */
+      summarizerModel: z.string().optional(),
+      /** Recent messages always kept verbatim when summarizing. Default 8. */
+      keepRecent: z.number().int().positive().optional(),
+      /** Token level above which summarization runs. Default ~80% of the window. */
+      summarizeAboveTokens: z.number().int().positive().optional(),
+    })
+    .optional(),
+
   ui: z
     .object({
       theme: z.enum(["dark", "light", "auto"]).optional(),
