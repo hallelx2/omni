@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Omni · system diagram</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.min.js"></script>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+    color: #1f2937;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .frame {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 28px 24px 20px;
+  }
+  .title {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0 0 2px;
+    color: #111827;
+  }
+  .subtitle {
+    margin: 0 0 16px;
+    color: #6b7280;
+    font-size: 13px;
+  }
+  .diagram-wrap {
+    background: #fafafa;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 20px 16px 12px;
+    position: relative;
+  }
+  .mermaid {
+    text-align: center;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  }
+  .mermaid .nodeLabel, .mermaid .edgeLabel {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+  }
+  .mermaid .cluster-label .nodeLabel {
+    font-weight: 600 !important;
+    font-size: 10.5px !important;
+    letter-spacing: 0.08em !important;
+    text-transform: uppercase !important;
+    color: #6b7280 !important;
+  }
+  .mermaid .cluster rect {
+    fill: #ffffff !important;
+    stroke: #e5e7eb !important;
+    stroke-width: 1px !important;
+    rx: 10 !important;
+    ry: 10 !important;
+  }
+  .mermaid .node rect, .mermaid .node polygon, .mermaid .node circle {
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.05));
+  }
+  .mermaid .edgePath .path { stroke-width: 1.3px !important; }
+  .mermaid .arrowMarkerPath { stroke-width: 1px !important; }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed #e5e7eb;
+    font-size: 11.5px;
+    color: #4b5563;
+  }
+  .legend .item { display: flex; align-items: center; gap: 6px; }
+  .legend .sw {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    border: 1px solid;
+  }
+  .sw-user    { background:#dbeafe; border-color:#3b82f6; }
+  .sw-engine  { background:#ede9fe; border-color:#8b5cf6; }
+  .sw-brain   { background:#fef3c7; border-color:#f59e0b; }
+  .sw-tools   { background:#d1fae5; border-color:#10b981; }
+  .sw-verify  { background:#fee2e2; border-color:#ef4444; }
+  .sw-memory  { background:#fce7f3; border-color:#ec4899; }
+  .sw-adapter { background:#cffafe; border-color:#06b6d4; }
+  .sw-offline { background:#f3f4f6; border-color:#6b7280; }
+  .watermark {
+    position: absolute;
+    bottom: 10px;
+    right: 18px;
+    font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: #9ca3af;
+    letter-spacing: 0.06em;
+  }
+  .watermark .at { color: #6b7280; }
+</style>
+</head>
+<body>
+
+<div class="frame">
+  <h1 class="title">Omni — self-improving agent harness</h1>
+  <p class="subtitle">Built for open models (MiMo · Qwen · GLM · Kimi). Three feedback loops, only one runs live.</p>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+
+  user(["💻  User · CLI · REPL"]):::user
+
+  subgraph BRAIN["THIRD BRAIN"]
+    direction LR
+    probe["🔬 probe → adapt"]:::brain
+    planner["📋 planner"]:::brain
+    decode["🔒 structured decode"]:::brain
+    ctx["🧮 context manager"]:::brain
+  end
+
+  eng["⚙️  Engine · streaming · hooks · permissions · sub-agents"]:::engine
+
+  subgraph ADAPTERS["MODEL ADAPTERS"]
+    direction LR
+    a1["MiMo"]:::adapter
+    a2["Qwen·GLM·Kimi"]:::adapter
+    a3["Anthropic"]:::adapter
+    a4["OpenAI·Google"]:::adapter
+    a5["Ollama"]:::adapter
+  end
+
+  subgraph TOOLS["TOOLS"]
+    direction LR
+    t1["💻 bash"]:::tools
+    t2["✏️ edit"]:::tools
+    t3["🩹 apply_patch"]:::tools
+    t4["📄 read·write"]:::tools
+    t5["🔍 glob·grep"]:::tools
+    t6["🌐 web_fetch"]:::tools
+    t7["🔌 MCP"]:::tools
+  end
+
+  subgraph VERIFIER["VERIFIER · CRITIC pattern"]
+    direction LR
+    v1["🧪 tests"]:::verify
+    v2["🧹 lint"]:::verify
+    v3["🔠 typecheck"]:::verify
+    v4["✅ patch applies"]:::verify
+    v5["📜 file parses"]:::verify
+  end
+
+  subgraph MEMORY["TIERED MEMORY"]
+    direction LR
+    mcore["📌 core"]:::memory
+    mrec["🗂️ recall"]:::memory
+    march["📚 archival"]:::memory
+  end
+
+  subgraph OFFLINE["OFFLINE · between releases"]
+    direction LR
+    o1["📼 traces"]:::offline
+    o2["📐 eval set"]:::offline
+    o3["🧬 GEPA"]:::offline
+    o4["⚖️ A/B"]:::offline
+    o5["🚀 promoted"]:::offline
+    o1 --> o2 --> o3 --> o4 --> o5
+  end
+
+  %% edges
+  user --> eng
+  BRAIN --> eng
+  eng --> ADAPTERS
+  eng --> TOOLS
+  TOOLS --> VERIFIER
+
+  VERIFIER -- "✓ pass" --> MEMORY
+  VERIFIER -. "✗ fail · retry (loop 1)" .-> eng
+  MEMORY -. "queried (loop 2)" .-> eng
+  eng -. "session traces" .-> o1
+  o5 -. "release (loop 3)" .-> BRAIN
+
+  classDef user    fill:#dbeafe,stroke:#3b82f6,stroke-width:1.5px,color:#1e3a8a,rx:8,ry:8
+  classDef engine  fill:#ede9fe,stroke:#8b5cf6,stroke-width:1.5px,color:#4c1d95,rx:8,ry:8
+  classDef brain   fill:#fef3c7,stroke:#f59e0b,stroke-width:1.5px,color:#78350f,rx:8,ry:8
+  classDef tools   fill:#d1fae5,stroke:#10b981,stroke-width:1.5px,color:#064e3b,rx:8,ry:8
+  classDef verify  fill:#fee2e2,stroke:#ef4444,stroke-width:1.5px,color:#7f1d1d,rx:8,ry:8
+  classDef memory  fill:#fce7f3,stroke:#ec4899,stroke-width:1.5px,color:#831843,rx:8,ry:8
+  classDef adapter fill:#cffafe,stroke:#06b6d4,stroke-width:1.5px,color:#164e63,rx:8,ry:8
+  classDef offline fill:#f3f4f6,stroke:#6b7280,stroke-width:1.5px,color:#1f2937,rx:8,ry:8
+    </pre>
+
+    <div class="watermark">by <span class="at">@</span>hallelx2</div>
+  </div>
+
+  <div class="legend">
+    <div class="item"><span class="sw sw-user"></span> user</div>
+    <div class="item"><span class="sw sw-engine"></span> engine</div>
+    <div class="item"><span class="sw sw-brain"></span> brain</div>
+    <div class="item"><span class="sw sw-tools"></span> tools</div>
+    <div class="item"><span class="sw sw-verify"></span> verifier</div>
+    <div class="item"><span class="sw sw-memory"></span> memory</div>
+    <div class="item"><span class="sw sw-adapter"></span> adapters</div>
+    <div class="item"><span class="sw sw-offline"></span> offline</div>
+  </div>
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "base",
+    securityLevel: "loose",
+    themeVariables: {
+      background: "#ffffff",
+      primaryColor: "#ffffff",
+      primaryTextColor: "#1f2937",
+      primaryBorderColor: "#e5e7eb",
+      lineColor: "#9ca3af",
+      secondaryColor: "#f9fafb",
+      tertiaryColor: "#ffffff",
+      clusterBkg: "#ffffff",
+      clusterBorder: "#e5e7eb",
+      titleColor: "#111827",
+      edgeLabelBackground: "#ffffff",
+      fontFamily: "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif",
+      fontSize: "12px"
+    },
+    flowchart: {
+      htmlLabels: true,
+      curve: "basis",
+      padding: 10,
+      nodeSpacing: 22,
+      rankSpacing: 28
+    }
+  });
+</script>
+
+</body>
+</html>

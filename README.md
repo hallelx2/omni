@@ -103,6 +103,13 @@ If the harness compensates intelligently for what the model can't do — by prob
 </tr>
 </table>
 
+### 🤖 Subagents & Modes
+
+- **Prebuilt subagents** — `explore`, `test`, `critique` ship in-repo as `AGENT.md` definitions, each a sandboxed child engine with its own model, tool subset, and **enforced** permission rules (regex allow/deny per tool — e.g. `test` may run `bun test` but not `rm -rf`, and write only `*.test.ts`). Override or add your own in `~/.omni/agents/<name>/AGENT.md` or workspace `.omni/agents/`.
+- **Parallel dispatch** — the agent calls a subagent directly as a tool, or fans several out at once with `dispatch_agents` (bounded concurrency, partial-failure isolation, abort propagation) and collects every result when they finish.
+- **Plan / Build modes** — `plan` restricts the main engine to read-only tools and runs the **Planner** first; `build` allows all tools and runs the **Critic** after each turn. Switch with `/plan` · `/build` · `/mode`; the agent can request a plan→build switch via `request_build_mode` (human-gated).
+- **Per-role models** — the planner, critic, and each subagent may run on a different model than the main agent (e.g. plan on Claude, execute on a local model), defaulting to the main model.
+
 ### Engine guarantees
 
 True streaming • abort propagation through model + tools • loop detection by tool-call signature • bounded retries on retryable errors • parallel tool calls with interleaved event streams • session snapshot/restore preserving identity • cost tracking when per-1k rates are known • 22 discriminated `EngineEvent` variants — the only public observation channel.
@@ -160,6 +167,8 @@ bun run typecheck     # all packages
 
 ### Publish a release
 
+**GitHub release (binaries for the `curl | bash` installers):**
+
 ```bash
 gh auth login
 bun run release v0.1.0   # build:all + create GitHub release with binaries
@@ -167,6 +176,29 @@ bun run release v0.1.0   # build:all + create GitHub release with binaries
 
 This uploads assets named `omni-<plat>-<arch>` so the install one-liners
 above can fetch them.
+
+**npm release (all platforms, via CI):** push a tag and the
+[`Release (npm)`](./.github/workflows/release.yml) workflow builds a native
+binary on a runner per OS, then publishes the `omni-harness` launcher plus
+each `omni-harness-<plat>` package. Cross-compiling can't be done from one
+host (opentui ships per-platform native modules), so the matrix is required.
+
+```bash
+git tag v0.1.0-beta.1 && git push origin v0.1.0-beta.1   # → npm tag "beta"
+git tag v0.1.0        && git push origin v0.1.0           # → npm tag "latest"
+# or run the workflow manually (Actions → Release (npm) → Run workflow)
+```
+
+Testers then install with:
+
+```bash
+npm i -g omni-harness@beta   # or @latest
+omni
+```
+
+**One-time setup:** add an npm automation token as the repo secret
+`NPM_TOKEN` (Settings → Secrets → Actions). The Linux-arm64 leg uses the
+`ubuntu-24.04-arm` runner (GitHub-hosted arm64; available on public repos).
 
 ---
 
@@ -179,6 +211,7 @@ Omni keeps per-user state in `~/.omni/`:
 ├── config.json     # default adapter, model, provider keys, UI prefs
 ├── db.sqlite       # sessions, messages, events, audit, profiles, variants
 ├── traces/         # one JSONL file per session run
+├── agents/         # custom subagent defs (AGENT.md) — override the shipped ones
 ├── memory.json     # long-term memory entries
 └── settings.json   # surface-specific settings (theme, etc.)
 ```
@@ -206,7 +239,12 @@ Every path is env-overridable (`OMNI_HOME`, `OMNI_DB`, `OMNI_TRACES`, `OMNI_MEMO
     "denyDestructive": true
   },
   "ui": { "theme": "dark", "showThinking": true },
-  "storage": { "tracesEnabled": true }
+  "storage": { "tracesEnabled": true },
+  "modes": { "default": "build" },
+  "agents": {
+    "planner": { "model": "anthropic:claude-sonnet-4-5" },
+    "critic": { "enabled": true, "autoRetry": false }
+  }
 }
 ```
 
@@ -240,6 +278,10 @@ All non-mock adapters go through **Vercel AI SDK 6**. Adding a new provider is r
 /usage        cumulative token usage and cost
 /session      current session ID
 /model        active model
+/mode         show or switch run mode (/mode plan | /mode build)
+/plan         switch to plan mode (read-only + planner)
+/build        switch to build mode (full tools + critic)
+/skill        pin/unpin a skill (/skill <name|off>)
 /history      compact view of conversation so far
 /quit         exit (also: /exit)
 ```
