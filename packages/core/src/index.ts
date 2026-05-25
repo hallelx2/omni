@@ -130,6 +130,7 @@ export {
   workspacePaths,
   userCommandsDir,
   userSkillsDir,
+  userAgentsDir,
   userHooksDir,
 } from "./paths.ts"
 export type { OmniPaths, WorkspacePaths } from "./paths.ts"

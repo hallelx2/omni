@@ -48,6 +48,15 @@ export {
 } from "./skills.ts"
 export type { Skill } from "./skills.ts"
 
+export {
+  loadAgents,
+  agentPermissionGate,
+  setAgentFrontmatterParser,
+} from "./agents.ts"
+export type { Agent, AgentToolRules } from "./agents.ts"
+export { DEFAULT_AGENT_FILES } from "./default-agents.ts"
+export type { DefaultAgentFile } from "./default-agents.ts"
+
 export { adapt } from "./adapt.ts"
 export type { AdaptedStrategy } from "./adapt.ts"
 
