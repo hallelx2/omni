@@ -37,8 +37,12 @@ export const ConfigSchema = z.object({
   permissions: z
     .object({
       mode: z.enum(["allow_all", "deny_all", "ask", "rules"]).optional(),
+      /** Tool names auto-allowed without prompting (applied after safety denies). */
       autoAllow: z.array(z.string()).optional(),
+      /** Deny obviously destructive bash on the main engine. Default true. */
       denyDestructive: z.boolean().optional(),
+      /** Confine file tools + bash to the workspace/cwd. Default false. */
+      restrictToWorkspace: z.boolean().optional(),
     })
     .optional(),
 

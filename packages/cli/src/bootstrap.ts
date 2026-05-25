@@ -12,6 +12,8 @@ import {
   Engine,
   AskPermissions,
   AllowAllPermissions,
+  GuardedPermissions,
+  workspaceGuards,
   TokenBudgetStrategy,
   ContextManager,
   TiktokenTokenizer,
@@ -28,6 +30,7 @@ import {
   type Config,
   type Verifier,
   type PermissionGate,
+  type PermissionRule,
   type OmniPaths,
   type WorkspacePaths,
 } from "@omni/core"
@@ -313,7 +316,7 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
   }
 
   // ─── Permissions ────────────────────────────────────────────────────────
-  const permissions = buildPermissions(opts, audit)
+  const permissions = buildPermissions(opts, audit, config)
 
   // ─── Verifiers ──────────────────────────────────────────────────────────
   const verifiers = buildVerifiers(config)
@@ -536,7 +539,7 @@ function pickAdapter(config: Config): { adapter: ModelAdapter; name: string } {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-function buildPermissions(opts: BootstrapOptions, audit: AuditRepo): PermissionGate {
+function buildPermissions(opts: BootstrapOptions, audit: AuditRepo, config: Config): PermissionGate {
   const mode = opts.askMode ?? "allow"
   let base: PermissionGate
   if (mode === "callback" && opts.askHandler) {
@@ -552,7 +555,23 @@ function buildPermissions(opts: BootstrapOptions, audit: AuditRepo): PermissionG
   } else {
     base = new AllowAllPermissions()
   }
-  return new AuditingPermissions(base, {
+
+  // Layer config-driven safety guards over the interactive base, regardless of
+  // askMode: destructive bash is denied by default (matching subagents), and
+  // workspace confinement is opt-in. `autoAllow` names bypass the prompt, but
+  // only AFTER the safety denies, so they can't re-enable something dangerous.
+  const perms = config.permissions ?? {}
+  const guards: PermissionRule[] = [
+    ...workspaceGuards({
+      denyDestructiveBash: perms.denyDestructive !== false,
+      restrictToRoot: perms.restrictToWorkspace === true,
+      root: process.cwd(),
+    }),
+    ...(perms.autoAllow ?? []).map((tool): PermissionRule => ({ tool, decision: "allow" })),
+  ]
+  const gated = guards.length > 0 ? new GuardedPermissions(base, guards) : base
+
+  return new AuditingPermissions(gated, {
     record(entry) {
       audit.append({
         session_id: entry.sessionId || undefined,
