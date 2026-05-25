@@ -74,13 +74,21 @@ export function omniPaths(): OmniPaths {
  *
  * Useful for per-project config, commands, skills, MCP servers, and hooks
  * that override the user-level defaults at `~/.omni/`.
+ *
+ * The global home (`omniHome()`, normally `~/.omni`) is **never** returned as a
+ * workspace. Because most projects live somewhere under `$HOME`, an unguarded
+ * walk would reach `~/.omni` and treat the user-level config as a workspace
+ * override of itself — silently collapsing the user/workspace distinction and,
+ * for array-valued settings like `hooks`, duplicating entries via
+ * `mergeConfigs`. The walk skips that directory and keeps climbing.
  */
 export function workspaceOmniDir(cwd: string = process.cwd()): string | null {
+  const home = omniHome()
   let dir = resolve(cwd)
   let prev = ""
   while (dir !== prev) {
     const candidate = join(dir, ".omni")
-    if (existsSync(candidate)) return candidate
+    if (candidate !== home && existsSync(candidate)) return candidate
     prev = dir
     dir = dirname(dir)
   }
@@ -93,6 +101,7 @@ export interface WorkspacePaths {
   readonly config: string
   readonly commands: string
   readonly skills: string
+  readonly agents: string
   readonly hooks: string
 }
 
@@ -104,6 +113,7 @@ export function workspacePaths(cwd?: string): WorkspacePaths | null {
     config: join(dir, "config.json"),
     commands: join(dir, "commands"),
     skills: join(dir, "skills"),
+    agents: join(dir, "agents"),
     hooks: join(dir, "hooks"),
   }
 }
@@ -114,6 +124,9 @@ export function userCommandsDir(): string {
 }
 export function userSkillsDir(): string {
   return join(omniHome(), "skills")
+}
+export function userAgentsDir(): string {
+  return join(omniHome(), "agents")
 }
 export function userHooksDir(): string {
   return join(omniHome(), "hooks")
