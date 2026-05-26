@@ -50,9 +50,9 @@ export const ConfigSchema = z.object({
   context: z
     .object({
       /**
-       * How history is fit into the window. Default "budget" (drops the oldest
-       * messages). "summarize" compacts older turns with the model instead of
-       * dropping them; "sliding" keeps only the most recent messages.
+       * How history is fit into the window. Default "summarize" (compacts older
+       * turns into a model-written summary, only near the window limit). "budget"
+       * drops the oldest messages instead; "sliding" keeps only the most recent.
        */
       compaction: z.enum(["summarize", "budget", "sliding"]).optional(),
       /** Model ref for the summariser (e.g. "anthropic:claude…"); defaults to the main model. */

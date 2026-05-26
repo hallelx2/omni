@@ -69,6 +69,7 @@ import {
   type Agent,
 } from "@omni/improve"
 import { buildMemory, makeRememberTool, recallBlock } from "./memory-runtime.ts"
+import { makeDedupReadFile } from "./read-dedup.ts"
 import { parseFrontmatter } from "./user-commands.ts"
 import { resolveAdapter, makeAgentTool, agentToolName, structuredConfigFor, type BuildAgentDeps } from "./agents-runtime.ts"
 import { createModeHolder, type ModeHolder, type RunMode } from "./mode.ts"
@@ -278,8 +279,11 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
           recallBlock(memory, input, { k: config.memory?.k, minScore: config.memory?.minScore })
       : undefined
 
+  // The main engine gets a dedup-wrapped read_file (won't re-send an unchanged
+  // file it already read); subagents keep the raw one — their contexts differ.
+  const mainBuiltins = builtinTools.map((t) => (t.name === "read_file" ? makeDedupReadFile(t) : t))
   const tools: readonly Tool[] = [
-    ...builtinTools,
+    ...mainBuiltins,
     ...agentTools,
     ...(dispatchTool ? [dispatchTool] : []),
     ...(rememberTool ? [rememberTool] : []),
@@ -571,11 +575,12 @@ function pickAdapter(config: Config): { adapter: ModelAdapter; name: string } {
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 /**
- * Select the context-window strategy from config. Default "budget" drops the
- * oldest messages when over the token budget; "summarize" compacts older turns
- * with the model instead (and falls back to budget if a summarise call fails);
- * "sliding" keeps only the most recent messages. The summariser defaults to the
- * main model but can be pointed at a cheaper per-role model.
+ * Select the context-window strategy from config. Default "summarize" compacts
+ * older turns into a model-written summary (preserving their substance) and only
+ * triggers near the window limit — short sessions pay nothing. "budget" drops
+ * the oldest messages instead; "sliding" keeps only the most recent. The
+ * summariser defaults to the main model but can be a cheaper per-role model;
+ * summarisation falls back to "budget" if a summarise call fails.
  */
 export function buildContextStrategy(
   config: Config,
@@ -590,19 +595,20 @@ export function buildContextStrategy(
     reserveTokensForOutput: deps.reserveOutputTokens,
   })
   const c = config.context
-  switch (c?.compaction) {
+  switch (c?.compaction ?? "summarize") {
+    case "budget":
+      return budget
     case "sliding":
       return new SlidingWindowStrategy()
     case "summarize":
+    default:
       return new SummarizingStrategy({
-        summariser: c.summarizerModel ? deps.resolveModel(c.summarizerModel) : deps.summariser,
+        summariser: c?.summarizerModel ? deps.resolveModel(c.summarizerModel) : deps.summariser,
         inner: budget,
         tokenizer,
-        ...(c.keepRecent !== undefined ? { keepRecent: c.keepRecent } : {}),
-        ...(c.summarizeAboveTokens !== undefined ? { summariseAboveTokens: c.summarizeAboveTokens } : {}),
+        ...(c?.keepRecent !== undefined ? { keepRecent: c.keepRecent } : {}),
+        ...(c?.summarizeAboveTokens !== undefined ? { summariseAboveTokens: c.summarizeAboveTokens } : {}),
       })
-    default:
-      return budget
   }
 }
 

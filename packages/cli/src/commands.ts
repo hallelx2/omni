@@ -134,7 +134,7 @@ const COMMANDS: readonly SlashCommand[] = [
       const u = ctx.engine.usage()
       return {
         kind: "message",
-        text: `tokens: ${u.totalTokens} (in=${u.promptTokens}, out=${u.completionTokens}), calls=${u.callCount}${u.costUsd ? `, $${u.costUsd.toFixed(4)}` : ""}`,
+        text: `tokens: ${u.totalTokens} (in=${u.promptTokens}${u.cachedInputTokens ? ", cached=" + u.cachedInputTokens : ""}, out=${u.completionTokens}), calls=${u.callCount}${u.costUsd ? `, $${u.costUsd.toFixed(4)}` : ""}`,
       }
     },
   },

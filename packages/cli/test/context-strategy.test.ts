@@ -24,8 +24,8 @@ const deps = (resolveModel: (ref?: string) => ModelAdapter = () => mockAdapter) 
 })
 
 describe("buildContextStrategy", () => {
-  test("defaults to TokenBudgetStrategy when no context config", () => {
-    expect(buildContextStrategy({}, deps())).toBeInstanceOf(TokenBudgetStrategy)
+  test("defaults to SummarizingStrategy (preserve context, don't drop)", () => {
+    expect(buildContextStrategy({}, deps())).toBeInstanceOf(SummarizingStrategy)
   })
 
   test("explicit 'budget' selects TokenBudgetStrategy", () => {

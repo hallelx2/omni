@@ -237,7 +237,7 @@ export class SummarizingStrategy implements ContextStrategy {
         id: "s-sys",
         role: "system",
         content:
-          "You maintain a rolling summary of an agent conversation. You will receive the prior summary and the new turns since. Output an UPDATED summary in 4-8 bullets covering: the original task, key decisions, files/locations referenced, unresolved sub-tasks. Be terse. No preamble.",
+          "You maintain a faithful, comprehensive rolling summary of an agent's session. You receive the prior summary and the new turns since; output an UPDATED summary that still lets the agent continue without re-reading. Cover: the original task/goal, what's been done, key decisions and WHY, files/paths/symbols touched, current state, and unresolved sub-tasks / next steps. Preserve concrete identifiers (names, paths, signatures, errors) verbatim and carry forward anything from the prior summary that's still relevant. Be dense but complete. No preamble.",
         timestamp: Date.now(),
       },
       {
@@ -261,7 +261,7 @@ export class SummarizingStrategy implements ContextStrategy {
         id: "s-sys",
         role: "system",
         content:
-          "You compress agent conversation history. Output 4-8 bullet points capturing: the original task, key decisions made, files/locations referenced, and any unresolved sub-tasks. Be terse. No preamble.",
+          "You write a faithful, comprehensive summary of an agent's working session so it can continue WITHOUT re-reading the earlier turns. Capture, as a structured list: (1) the original task/goal, (2) what has been done so far, (3) key decisions and WHY, (4) files, paths, and symbols touched or referenced, (5) the current state, (6) unresolved sub-tasks and next steps. Preserve concrete identifiers (names, paths, signatures, error messages) verbatim — do not drop information needed to continue. Be dense but complete. No preamble.",
         timestamp: Date.now(),
       },
       {
