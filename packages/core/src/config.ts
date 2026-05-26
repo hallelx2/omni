@@ -187,8 +187,17 @@ export const ConfigSchema = z.object({
   /** Default run mode and mode behaviour. */
   modes: z
     .object({
-      /** Startup mode. Default "build" (full tools). "plan" is read-only + planner. */
-      default: z.enum(["plan", "build"]).optional(),
+      /**
+       * Startup mode. Default "build" (full tools + critic + ask-prompts).
+       * "plan" = read-only tools + planner; "auto" = full tools, no prompts
+       * (unattended), safety guards still apply.
+       */
+      default: z.enum(["plan", "auto", "build"]).optional(),
+      /**
+       * Classify each user input into plan/auto/build before the turn via a
+       * cheap one-word model call, and switch mode to match. Default false.
+       */
+      autoClassify: z.boolean().optional(),
     })
     .optional(),
 

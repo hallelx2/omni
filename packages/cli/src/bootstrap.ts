@@ -70,6 +70,7 @@ import {
 } from "@omni/improve"
 import { buildMemory, makeRememberTool, recallBlock } from "./memory-runtime.ts"
 import { makeDedupReadFile } from "./read-dedup.ts"
+import { ModeAwarePermissions } from "./mode-aware-permissions.ts"
 import { parseFrontmatter } from "./user-commands.ts"
 import { resolveAdapter, makeAgentTool, agentToolName, structuredConfigFor, type BuildAgentDeps } from "./agents-runtime.ts"
 import { createModeHolder, type ModeHolder, type RunMode } from "./mode.ts"
@@ -341,7 +342,7 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
   }
 
   // ─── Permissions ────────────────────────────────────────────────────────
-  const permissions = buildPermissions(opts, audit, config)
+  const permissions = buildPermissions(opts, audit, config, () => mode.get())
 
   // ─── Verifiers ──────────────────────────────────────────────────────────
   const verifiers = buildVerifiers(config)
@@ -612,10 +613,15 @@ export function buildContextStrategy(
   }
 }
 
-function buildPermissions(opts: BootstrapOptions, audit: AuditRepo, config: Config): PermissionGate {
-  const mode = opts.askMode ?? "allow"
+function buildPermissions(
+  opts: BootstrapOptions,
+  audit: AuditRepo,
+  config: Config,
+  getRunMode: () => RunMode,
+): PermissionGate {
+  const askMode = opts.askMode ?? "allow"
   let base: PermissionGate
-  if (mode === "callback" && opts.askHandler) {
+  if (askMode === "callback" && opts.askHandler) {
     base = new AskPermissions(async (tool, call) => {
       const decision = await opts.askHandler!(
         { name: tool.name, description: tool.description },
@@ -623,16 +629,21 @@ function buildPermissions(opts: BootstrapOptions, audit: AuditRepo, config: Conf
       )
       return decision
     })
-  } else if (mode === "deny") {
+  } else if (askMode === "deny") {
     base = new AskPermissions(async () => "deny")
   } else {
     base = new AllowAllPermissions()
   }
 
-  // Layer config-driven safety guards over the interactive base, regardless of
-  // askMode: destructive bash is denied by default (matching subagents), and
-  // workspace confinement is opt-in. `autoAllow` names bypass the prompt, but
-  // only AFTER the safety denies, so they can't re-enable something dangerous.
+  // Mode-aware shim: in "auto" mode, ask-prompts are auto-allowed (unattended).
+  // Wrapped INSIDE the safety guard layer so destructive-bash / workspace
+  // confinement still apply regardless of mode.
+  const modeAware: PermissionGate = new ModeAwarePermissions(base, getRunMode)
+
+  // Layer config-driven safety guards over the mode-aware base. Destructive
+  // bash is denied by default (matching subagents) and workspace confinement
+  // is opt-in. `autoAllow` names bypass the prompt, but only AFTER the safety
+  // denies, so they can't re-enable something dangerous.
   const perms = config.permissions ?? {}
   const guards: PermissionRule[] = [
     ...workspaceGuards({
@@ -642,7 +653,7 @@ function buildPermissions(opts: BootstrapOptions, audit: AuditRepo, config: Conf
     }),
     ...(perms.autoAllow ?? []).map((tool): PermissionRule => ({ tool, decision: "allow" })),
   ]
-  const gated = guards.length > 0 ? new GuardedPermissions(base, guards) : base
+  const gated = guards.length > 0 ? new GuardedPermissions(modeAware, guards) : modeAware
 
   return new AuditingPermissions(gated, {
     record(entry) {

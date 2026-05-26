@@ -13,6 +13,7 @@ import { bootstrap } from "./bootstrap.ts"
 import { renderEvent } from "./render.ts"
 import { tryDispatchCommand } from "./commands.ts"
 import { runTurn, type OrchestrationDeps, type OrchestrationSink } from "./orchestrate.ts"
+import { classifyIntent } from "./auto-classify.ts"
 import { confirm } from "./prompts.ts"
 import { ansi } from "./ansi.ts"
 import { findMatchingSkill, renderPlan, type Skill } from "@omni/improve"
@@ -188,6 +189,14 @@ async function run(): Promise<void> {
       if (cmdResult.kind === "prompt") {
         effectiveInput = cmdResult.text
         console.log(ansi.dim(`[command rendered to ${effectiveInput.length} chars]`))
+      }
+    }
+
+    if (deps.config.modes?.autoClassify) {
+      const classified = await classifyIntent(effectiveInput, deps.adapter)
+      if (classified && classified !== deps.mode.get()) {
+        deps.mode.set(classified, "auto")
+        console.log(ansi.dim(`[mode auto-detected: ${classified}]`))
       }
     }
 

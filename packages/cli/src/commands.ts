@@ -323,22 +323,31 @@ const COMMANDS: readonly SlashCommand[] = [
   },
   {
     name: "mode",
-    description: "Show or switch run mode: /mode (show), /mode plan, /mode build",
+    description: "Show or switch run mode: /mode (show), /mode plan|auto|build",
     async run(args, ctx) {
       if (!ctx.onModeChange || !ctx.mode) {
         return { kind: "message", text: ansi.dim("(modes not initialized)") }
       }
       const arg = parseArgs(args)[0]?.toLowerCase()
       if (!arg) {
-        const note = ctx.mode === "plan" ? "read-only + planner" : "full tools + critic"
+        const note =
+          ctx.mode === "plan"
+            ? "read-only + planner"
+            : ctx.mode === "auto"
+              ? "full tools, no permission prompts (unattended)"
+              : "full tools + critic"
         return { kind: "message", text: `mode: ${ansi.bold(ctx.mode)} ${ansi.dim("(" + note + ")")}` }
       }
-      if (arg !== "plan" && arg !== "build") {
-        return { kind: "message", text: ansi.red(`unknown mode: ${arg}. Use 'plan' or 'build'.`) }
+      if (arg !== "plan" && arg !== "auto" && arg !== "build") {
+        return { kind: "message", text: ansi.red(`unknown mode: ${arg}. Use 'plan', 'auto', or 'build'.`) }
       }
       ctx.onModeChange(arg, "manual")
       const note =
-        arg === "plan" ? "read-only tools: read_file, glob, grep, web_fetch" : "full tool access"
+        arg === "plan"
+          ? "read-only tools: read_file, glob, grep, web_fetch"
+          : arg === "auto"
+            ? "full tools; ask-prompts auto-allowed (safety guards still apply)"
+            : "full tool access"
       return { kind: "message", text: `${ansi.green("→")} ${ansi.bold(arg)} mode ${ansi.dim("(" + note + ")")}` }
     },
   },
@@ -363,6 +372,18 @@ const COMMANDS: readonly SlashCommand[] = [
       return {
         kind: "message",
         text: `${ansi.green("→")} ${ansi.bold("build")} mode ${ansi.dim("(full tool access)")}`,
+      }
+    },
+  },
+  {
+    name: "auto",
+    description: "Switch to auto mode (full tools, no permission prompts — unattended)",
+    async run(_args, ctx) {
+      if (!ctx.onModeChange) return { kind: "message", text: ansi.dim("(modes not initialized)") }
+      ctx.onModeChange("auto", "manual")
+      return {
+        kind: "message",
+        text: `${ansi.green("→")} ${ansi.bold("auto")} mode ${ansi.dim("(no prompts; safety guards still apply)")}`,
       }
     },
   },
