@@ -6,6 +6,7 @@ export function zeroUsage(): CumulativeUsage {
     promptTokens: 0,
     completionTokens: 0,
     totalTokens: 0,
+    cachedInputTokens: 0,
     callCount: 0,
   }
 }
@@ -16,6 +17,7 @@ export function accumulateUsage(prev: CumulativeUsage, delta: UsageDelta): Cumul
     promptTokens: prev.promptTokens + delta.promptTokens,
     completionTokens: prev.completionTokens + delta.completionTokens,
     totalTokens: prev.totalTokens + delta.totalTokens,
+    cachedInputTokens: (prev.cachedInputTokens ?? 0) + (delta.cachedInputTokens ?? 0),
     callCount: prev.callCount + 1,
     costUsd: (prev.costUsd ?? 0) + (delta.costUsd ?? 0) || prev.costUsd,
   }

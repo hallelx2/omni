@@ -130,6 +130,8 @@ export interface TokenUsage {
   readonly promptTokens: number
   readonly completionTokens: number
   readonly totalTokens: number
+  /** Prompt tokens served from the provider's prompt cache (a subset of `promptTokens`). */
+  readonly cachedInputTokens?: number
 }
 
 /** Per-call usage with optional cost in USD (when the adapter can compute it). */
@@ -158,6 +160,8 @@ export interface ModelCapabilities {
   readonly supportsThinking?: boolean
   readonly costPer1kInput?: number
   readonly costPer1kOutput?: number
+  /** Rate for cache-read (cached input) tokens. Defaults to 10% of `costPer1kInput`. */
+  readonly costPer1kCachedInput?: number
 }
 
 /** Parameters passed by the engine to {@link ModelAdapter.complete}. */

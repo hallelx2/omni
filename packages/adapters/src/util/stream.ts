@@ -72,6 +72,7 @@ export async function* translateStream(
             promptTokens: part.totalUsage.inputTokens ?? 0,
             completionTokens: part.totalUsage.outputTokens ?? 0,
             totalTokens: part.totalUsage.totalTokens ?? 0,
+            cachedInputTokens: part.totalUsage.cachedInputTokens ?? 0,
           },
         }
         break

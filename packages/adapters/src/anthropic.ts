@@ -1,4 +1,4 @@
-import { streamText } from "ai"
+import { streamText, type ModelMessage } from "ai"
 import { createAnthropic } from "@ai-sdk/anthropic"
 import type {
   CompleteParams,
@@ -106,9 +106,11 @@ export class AnthropicAdapter implements ModelAdapter {
           },
         }
       : undefined
+    const messages = [...messagesToAISDK(params.messages)]
+    applyAnthropicCaching(messages)
     const result = streamText({
       model: this._model,
-      messages: messagesToAISDK(params.messages),
+      messages,
       tools: toolsToAISDK(params.tools),
       temperature: params.temperature,
       abortSignal: params.signal,
@@ -120,5 +122,25 @@ export class AnthropicAdapter implements ModelAdapter {
 
   languageModel(): unknown {
     return this._model
+  }
+}
+
+/**
+ * Mark the stable prefix with Anthropic prompt-cache breakpoints so it's cached
+ * across turns: one on the system message (covers the system prompt + tools)
+ * and one on the last message (covers the conversation so far). Cache reads are
+ * ~10% of input price — a large saving on multi-turn agent runs.
+ */
+function applyAnthropicCaching(messages: ModelMessage[]): void {
+  const ephemeral = { anthropic: { cacheControl: { type: "ephemeral" as const } } }
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]!.role === "system") {
+      messages[i] = { ...messages[i]!, providerOptions: { ...messages[i]!.providerOptions, ...ephemeral } }
+      break
+    }
+  }
+  const last = messages.length - 1
+  if (last >= 0 && messages[last]!.role !== "system") {
+    messages[last] = { ...messages[last]!, providerOptions: { ...messages[last]!.providerOptions, ...ephemeral } }
   }
 }
