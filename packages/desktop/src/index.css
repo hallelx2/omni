@@ -1,0 +1,374 @@
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Hallmark/frontend-design · redesign · genre: modern-minimal (dev-tool)
+ * theme: studied-DNA (opencode) — monochrome "terminal-luxe": pure black & white
+ * chrome, Geist Sans + Geist Mono, inverted high-contrast primary, hairline
+ * borders, crisp corners. Semantic + diff colours kept for meaning only.
+ * pre-emit critique: P5 H5 E5 S5 R5 V4
+ */
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --radius: 0.4rem;
+
+  --background: oklch(0.99 0 0);
+  --foreground: oklch(0.18 0 0);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0 0);
+
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0 0);
+
+  /* primary = inverted foreground → black buttons on light */
+  --primary: oklch(0.2 0 0);
+  --primary-foreground: oklch(0.99 0 0);
+
+  --secondary: oklch(0.965 0 0);
+  --secondary-foreground: oklch(0.25 0 0);
+
+  --muted: oklch(0.965 0 0);
+  --muted-foreground: oklch(0.47 0 0);
+
+  --accent: oklch(0.95 0 0);
+  --accent-foreground: oklch(0.2 0 0);
+
+  --destructive: oklch(0.54 0.2 25);
+  --destructive-foreground: oklch(0.99 0 0);
+  --success: oklch(0.5 0.13 152);
+  --warning: oklch(0.6 0.12 70);
+
+  --border: oklch(0.18 0 0 / 0.12);
+  --border-strong: oklch(0.18 0 0 / 0.2);
+  --input: oklch(0.18 0 0 / 0.14);
+  --ring: oklch(0.3 0 0);
+
+  --sidebar: oklch(0.975 0 0);
+  --sidebar-foreground: oklch(0.28 0 0);
+  --sidebar-accent: oklch(0.94 0 0);
+  --sidebar-border: oklch(0.18 0 0 / 0.09);
+
+  --diff-add-bg: color-mix(in oklch, var(--success) 14%, transparent);
+  --diff-add-fg: oklch(0.42 0.12 152);
+  --diff-del-bg: color-mix(in oklch, var(--destructive) 12%, transparent);
+  --diff-del-fg: oklch(0.5 0.18 25);
+  --diff-hunk: oklch(0.5 0 0);
+
+  --shadow-soft: 0 1px 2px oklch(0 0 0 / 0.05), 0 2px 8px oklch(0 0 0 / 0.05);
+  --shadow-pop: 0 4px 12px oklch(0 0 0 / 0.1), 0 16px 40px oklch(0 0 0 / 0.12);
+  --glow: 0 0 0 1px oklch(0.18 0 0 / 0.25);
+
+  --code-kw: oklch(0.42 0.06 285);
+  --code-str: oklch(0.46 0.07 152);
+  --code-num: oklch(0.5 0.07 60);
+  --code-fn: oklch(0.46 0.06 245);
+}
+
+.dark {
+  --background: oklch(0.15 0 0);
+  --foreground: oklch(0.955 0 0);
+
+  --card: oklch(0.19 0 0);
+  --card-foreground: oklch(0.955 0 0);
+
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.955 0 0);
+
+  /* primary = inverted foreground → white buttons on near-black */
+  --primary: oklch(0.97 0 0);
+  --primary-foreground: oklch(0.16 0 0);
+
+  --secondary: oklch(0.25 0 0);
+  --secondary-foreground: oklch(0.95 0 0);
+
+  --muted: oklch(0.235 0 0);
+  --muted-foreground: oklch(0.66 0 0);
+
+  --accent: oklch(0.26 0 0);
+  --accent-foreground: oklch(0.96 0 0);
+
+  --destructive: oklch(0.66 0.2 25);
+  --destructive-foreground: oklch(0.98 0 0);
+  --success: oklch(0.74 0.15 155);
+  --warning: oklch(0.82 0.13 82);
+
+  --border: oklch(1 0 0 / 0.1);
+  --border-strong: oklch(1 0 0 / 0.17);
+  --input: oklch(1 0 0 / 0.13);
+  --ring: oklch(0.85 0 0);
+
+  --sidebar: oklch(0.175 0 0);
+  --sidebar-foreground: oklch(0.78 0 0);
+  --sidebar-accent: oklch(0.255 0 0);
+  --sidebar-border: oklch(1 0 0 / 0.07);
+
+  --diff-add-bg: color-mix(in oklch, var(--success) 12%, transparent);
+  --diff-add-fg: oklch(0.82 0.15 156);
+  --diff-del-bg: color-mix(in oklch, var(--destructive) 13%, transparent);
+  --diff-del-fg: oklch(0.78 0.16 23);
+  --diff-hunk: oklch(0.62 0 0);
+
+  --shadow-soft: 0 1px 2px oklch(0 0 0 / 0.35), 0 4px 16px oklch(0 0 0 / 0.36);
+  --shadow-pop: 0 8px 24px oklch(0 0 0 / 0.45), 0 24px 60px oklch(0 0 0 / 0.55);
+  --glow: 0 0 0 1px oklch(1 0 0 / 0.2);
+
+  --code-kw: oklch(0.78 0.07 285);
+  --code-str: oklch(0.78 0.08 152);
+  --code-num: oklch(0.82 0.08 70);
+  --code-fn: oklch(0.8 0.07 240);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-border: var(--sidebar-border);
+
+  --font-sans: "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono Variable", "SFMono-Regular", "Cascadia Code", Consolas, monospace;
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: calc(var(--radius) - 1px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 3px);
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.5, 0, 0.75, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* Semantic motion durations — apply with `duration-fast`, `duration-base`, … */
+  --duration-fast: 110ms;
+  --duration-base: 180ms;
+  --duration-slow: 280ms;
+  --duration-deliberate: 420ms;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv01";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow: hidden;
+    letter-spacing: -0.006em;
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--foreground) 22%, transparent);
+  }
+  :focus-visible {
+    outline: none;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklch, var(--foreground) 16%, transparent) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: color-mix(in oklch, var(--foreground) 14%, transparent);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklch, var(--foreground) 26%, transparent);
+    background-clip: content-box;
+  }
+  .drag-region {
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+  .no-drag {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+  .shadow-soft {
+    box-shadow: var(--shadow-soft);
+  }
+  .shadow-pop {
+    box-shadow: var(--shadow-pop);
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+  .font-mono {
+    font-feature-settings: "ss01", "ss02", "zero";
+  }
+  .caret-blink {
+    animation: caret-blink 1.1s steps(2, start) infinite;
+  }
+  .reveal {
+    animation: reveal 0.3s var(--ease-out) both;
+  }
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      var(--muted-foreground) 0%,
+      var(--foreground) 22%,
+      var(--muted-foreground) 44%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: shimmer 1.8s linear infinite;
+  }
+  /* One-shot attention pulse — call out a freshly arrived element. */
+  .attention {
+    animation: attention 1.1s var(--ease-out) 1;
+  }
+  /* Subtle hover lift + tactile press. Compose on any interactive surface. */
+  .tactile {
+    transition:
+      transform var(--duration-fast) var(--ease-out),
+      background-color var(--duration-base) var(--ease-out),
+      border-color var(--duration-base) var(--ease-out),
+      box-shadow var(--duration-base) var(--ease-out),
+      color var(--duration-base) var(--ease-out);
+  }
+  .tactile:active {
+    transform: scale(0.985);
+  }
+  /* Smooth crossfade-rotate for icon swaps (theme toggle, etc.). */
+  .icon-swap {
+    transition:
+      transform var(--duration-slow) var(--ease-out),
+      opacity var(--duration-base) var(--ease-out);
+  }
+}
+
+@keyframes caret-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -150% 0;
+  }
+}
+
+@keyframes attention {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--warning) 55%, transparent);
+  }
+  60% {
+    box-shadow: 0 0 0 12px color-mix(in oklch, var(--warning) 0%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .reveal {
+    animation: none;
+  }
+}
+
+/* highlight.js — near-monochrome with faint hues (opencode-leaning). */
+.hljs {
+  color: var(--foreground);
+  background: transparent;
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-doctag {
+  color: var(--code-kw);
+}
+.hljs-string,
+.hljs-attr,
+.hljs-template-tag,
+.hljs-addition {
+  color: var(--code-str);
+}
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet {
+  color: var(--code-num);
+}
+.hljs-title,
+.hljs-section,
+.hljs-name,
+.hljs-selector-id,
+.hljs-type,
+.hljs-built_in {
+  color: var(--code-fn);
+}
+.hljs-tag,
+.hljs-attribute,
+.hljs-deletion {
+  color: var(--diff-del-fg);
+}
