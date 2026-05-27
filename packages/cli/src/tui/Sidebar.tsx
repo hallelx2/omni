@@ -57,7 +57,13 @@ export function Sidebar(props: {
             <Stat
               label="mode"
               value={props.status.mode}
-              accent={props.status.mode === "plan" ? theme.warning : theme.success}
+              accent={
+                props.status.mode === "plan"
+                  ? theme.warning
+                  : props.status.mode === "auto"
+                    ? theme.accent
+                    : theme.success
+              }
             />
             <Stat label="cwd" value={shorten(props.cwd, 36)} />
             <Show when={props.status.skillName}>

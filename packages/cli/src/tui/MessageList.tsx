@@ -32,7 +32,7 @@ export function MessageList(props: {
   )
 }
 
-function MessageRow(props: { m: MessageEntry; first: boolean }) {
+export function MessageRow(props: { m: MessageEntry; first: boolean }) {
   const m = () => props.m
   return (
     <Switch>
@@ -108,7 +108,7 @@ function AssistantMessage(props: { text: string; streaming: boolean; thinking?: 
       <Show when={props.text.length > 0}>
         <box paddingLeft={3} marginTop={1} flexShrink={0}>
           <markdown
-            content={bulletize(props.text.trim())}
+            content={props.text.trim()}
             syntaxStyle={syntaxStyle()}
             streaming={props.streaming}
             internalBlockMode="top-level"

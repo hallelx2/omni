@@ -6,7 +6,7 @@
  * model, which can take seconds). When bootstrap resolves we swap in the
  * full chat app; if it fails we show an error screen instead of crashing.
  */
-import { render, useTerminalDimensions } from "@opentui/solid"
+import { render, useTerminalDimensions, useRenderer } from "@opentui/solid"
 import { Show, createSignal, onMount, onCleanup } from "solid-js"
 import { TextAttributes } from "@opentui/core"
 import { bootstrap, type BootstrapResult } from "../bootstrap.ts"
@@ -38,6 +38,14 @@ export async function runTui(): Promise<void> {
   const [bootError, setBootError] = createSignal<Error | null>(null)
   const [bootStep, setBootStep] = createSignal("starting…")
   const cwd = process.cwd()
+
+  // Name the terminal "omni" right away (before the engine is up). The first
+  // message replaces this with a session title (see startEngineRun).
+  try {
+    process.stdout.write("\x1b]0;omni\x07")
+  } catch {
+    // ignore — title is cosmetic
+  }
 
   // Fire-and-forget: bootstrap runs while the boot screen is already painted.
   void bootstrap({
@@ -90,8 +98,17 @@ export async function runTui(): Promise<void> {
         <ChatApp deps={deps()!} modals={modals} toasts={toasts} permission={permission} />
       </Show>
     ),
-    { useMouse },
+    // opencode's idiom: default (alternate) screen, our handlers own Ctrl-C
+    // (so it routes to shutdown → clears the screen).
+    { useMouse, exitOnCtrlC: false },
   )
+}
+
+/** A concise terminal/session title derived from the first user message. */
+function deriveSessionTitle(s: string): string {
+  const t = s.replace(/\s+/g, " ").trim()
+  if (!t) return "omni"
+  return t.length > 50 ? t.slice(0, 50).trimEnd() + "…" : t
 }
 
 // ─── Boot screen (painted instantly while bootstrap runs) ───────────────────
@@ -157,6 +174,8 @@ function ChatApp(props: {
     })
   }
 
+  const renderer = useRenderer()
+
   // ─── Active skill state (lives outside the store; the store only reflects
   //     the name for display).
   let activeSkill: Skill | null = null
@@ -193,8 +212,15 @@ function ChatApp(props: {
 
   // ─── Run-state (one engine.run() at a time)
   let currentRun: AbortController | null = null
+  let sessionTitled = false
 
   async function startEngineRun(text: string): Promise<void> {
+    // First prompt of the session names the terminal after it.
+    if (!sessionTitled) {
+      sessionTitled = true
+      const title = deriveSessionTitle(text)
+      if (title) renderer.setTerminalTitle(title)
+    }
     if (deps.skillAutoRoute && activeSkillSource !== "manual" && !text.startsWith("/")) {
       const eligible = [...deps.skills.values()].filter((s) => deps.skillsEnabled.has(s.name))
       const matched = findMatchingSkill(text, eligible)
@@ -326,10 +352,22 @@ function ChatApp(props: {
     } catch (e) {
       console.error(`shutdown error: ${(e as Error).message}`)
     }
+    // Tear down the renderer, then wipe the screen + scrollback for a clean exit.
+    try {
+      renderer.destroy()
+    } catch {
+      // ignore
+    }
+    try {
+      process.stdout.write("\x1b[2J\x1b[3J\x1b[H")
+    } catch {
+      // ignore
+    }
     process.exit(code)
   }
 
   onMount(() => {
+    renderer.setTerminalTitle("omni")
     const onSig = () => {
       if (currentRun) handleAbort()
       else void shutdown(0)

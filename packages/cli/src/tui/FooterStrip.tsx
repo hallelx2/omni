@@ -23,6 +23,11 @@ export function FooterStrip(props: {
             <span style={{ fg: theme.warning }}>◐</span> plan
           </text>
         </Show>
+        <Show when={props.status.mode === "auto"}>
+          <text fg={theme.accent}>
+            <span style={{ fg: theme.accent }}>●</span> auto
+          </text>
+        </Show>
         <Show when={props.status.skillName}>
           <text fg={theme.text}>
             <span style={{ fg: theme.accent }}>◆</span> {props.status.skillName}

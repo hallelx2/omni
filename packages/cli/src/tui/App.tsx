@@ -21,11 +21,10 @@ export interface AppHandlers {
 }
 
 /**
- * Root — ChatGPT-style centered layout. The conversation lives in a single
- * centered column (max {@link CONTENT_WIDTH}); the session stats that used
- * to sit in a right rail are now a ctrl+b modal. On an empty transcript the
- * logo + prompt are centered vertically; once a conversation starts the
- * prompt drops to the bottom of the column.
+ * Root — full-width transcript with a centered prompt column. The transcript
+ * scrolls in an internal scrollbox (wheel / pageup-pagedn / ctrl+u·d·g); the
+ * session stats live behind ctrl+b. On an empty transcript the logo + prompt
+ * are centered; once a conversation starts the prompt drops to the bottom.
  */
 export function App(props: {
   store: TuiStore
@@ -94,9 +93,7 @@ export function App(props: {
   }
 
   useKeyboard((ev) => {
-    // Permission prompt owns the keyboard while pending.
     if (props.permission.pending()) return
-    // Stats modal: esc / ctrl+b close it; swallow everything else.
     if (showStats()) {
       if (ev.name === "escape" || (ev.ctrl && ev.name === "b")) setShowStats(false)
       return
@@ -148,7 +145,6 @@ export function App(props: {
   }
   const onSlashComplete = (name: string) => setInputValue(`/${name} `)
 
-  // Shared prompt cluster (used in both the landing and chat layouts).
   const slashEl = () => (
     <Show when={showSlashPopup() && !hasModal()}>
       <SlashPopup query={inputValue()} commands={SLASH_COMMANDS} onComplete={onSlashComplete} />
@@ -171,7 +167,6 @@ export function App(props: {
       interruptArmed={interruptArmed()}
     />
   )
-  // Queued (type-ahead) messages shown above the prompt while a run is busy.
   const queuedEl = () => (
     <Show when={queue().length > 0}>
       <box flexDirection="column" paddingLeft={3} flexShrink={0} marginTop={1}>
@@ -193,13 +188,12 @@ export function App(props: {
       flexDirection="column"
       backgroundColor={theme.background}
     >
-      {/* body — single centered column (the stats rail is now a ctrl+b modal) */}
+      {/* body — full-width transcript; the prompt cluster stays centered */}
       <box flexGrow={1} minHeight={0} flexDirection="row" justifyContent="center" onMouseScroll={onTranscriptWheel}>
         <box flexGrow={1} minHeight={0} maxWidth={hasMessages() ? undefined : CONTENT_WIDTH} flexDirection="column" paddingLeft={2} paddingRight={2}>
           <Show
             when={hasMessages()}
             fallback={
-              /* landing — logo + prompt centered vertically, ChatGPT-style */
               <box flexGrow={1} minHeight={0} flexDirection="column" justifyContent="center">
                 <LandingScreen status={props.store.status()} cwd={props.cwd} />
                 <box height={1} />
@@ -210,7 +204,6 @@ export function App(props: {
           >
             <MessageList messages={props.store.messages()} onScrollRef={(r) => (scrollBox = r)} />
 
-            {/* Transcript is full-width; the prompt cluster stays a centered column. */}
             <box
               alignSelf="center"
               width="100%"

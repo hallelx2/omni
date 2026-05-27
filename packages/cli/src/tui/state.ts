@@ -81,6 +81,9 @@ export function createTuiStore(initial: {
     callCount: 0,
   })
   const [running, setRunning] = createSignal(false)
+  // How many leading messages have been committed to the terminal's native
+  // scrollback (split-footer mode). The live footer renders messages().slice(committedCount()).
+  const [committedCount, setCommittedCount] = createSignal(0)
 
   // Active streaming assistant message id — used to append model.delta text.
   let activeAssistantId: string | null = null
@@ -412,6 +415,8 @@ export function createTuiStore(initial: {
     messages,
     status,
     running,
+    committedCount,
+    setCommittedCount,
     pushUser,
     pushEvent,
     pushSystem,
