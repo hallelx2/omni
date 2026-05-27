@@ -43,22 +43,6 @@ export const ConfigSchema = z.object({
       denyDestructive: z.boolean().optional(),
       /** Confine file tools + bash to the workspace/cwd. Default false. */
       restrictToWorkspace: z.boolean().optional(),
-      /**
-       * Pattern-driven allow/deny rules, consulted when `mode` is "rules"
-       * (unmatched calls fall through to an interactive prompt). `tool` is an
-       * exact name, "*", or a "/pattern/flags" regex; `argsInclude` optionally
-       * requires a substring in the stringified args. Serializable counterpart
-       * of the engine's PermissionRule.
-       */
-      rules: z
-        .array(
-          z.object({
-            tool: z.string(),
-            decision: z.enum(["allow", "deny"]),
-            argsInclude: z.string().optional(),
-          }),
-        )
-        .optional(),
     })
     .optional(),
 

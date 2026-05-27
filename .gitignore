@@ -12,3 +12,9 @@ Thumbs.db
 # Compiled binaries
 packages/cli/dist/
 packages/cli/dist-npm/
+
+# Tauri desktop app build artifacts
+packages/desktop/src-tauri/target/
+packages/desktop/src-tauri/binaries/
+packages/desktop/src-tauri/gen/
+packages/desktop/src-tauri/icon-source.png
