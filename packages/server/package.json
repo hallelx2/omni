@@ -8,6 +8,8 @@
   },
   "scripts": {
     "start": "bun run src/bin.ts",
+    "desktop": "bun run src/desktop/bin.ts",
+    "desktop:build": "bun run desktop-build.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

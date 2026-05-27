@@ -21,3 +21,11 @@
  */
 export { OmniServer } from "./server.ts"
 export type { OmniServerOptions } from "./server.ts"
+
+// ── Desktop surface (multi-project / multi-session) ──────────────────────────
+export { DesktopServer } from "./desktop/server.ts"
+export type { DesktopServerOptions } from "./desktop/server.ts"
+export { SessionRuntime, resolveAdapter } from "./desktop/runtime.ts"
+export { ProjectStore } from "./desktop/projects.ts"
+export { providerRegistry, defaultModelRef } from "./desktop/providers.ts"
+export type * from "./desktop/protocol.ts"
