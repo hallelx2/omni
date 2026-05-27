@@ -8,7 +8,9 @@ const turndown = new TurndownService({
   bulletListMarker: "-",
   hr: "---",
 })
-turndown.remove(["script", "style", "noscript", "iframe", "svg", "nav", "footer", "header", "aside"])
+// `remove` is DOM-typed; "svg" isn't a keyof HTMLElementTagNameMap under the
+// web package's lib.dom, so cast (the list is valid at runtime).
+turndown.remove(["script", "style", "noscript", "iframe", "svg", "nav", "footer", "header", "aside"] as any)
 
 const WebFetchArgs = z.object({
   url: z.string().url().describe("HTTPS URL to fetch."),
