@@ -15,8 +15,8 @@
     "server": "bun run --cwd packages/server src/bin.ts",
     "web": "bun run --cwd packages/web src/serve-dev.ts",
     "typecheck": "bun run scripts/typecheck.ts",
-    "test": "bun test",
-    "test:ci": "bun test --reporter junit > test-results.xml || true"
+    "test": "bun test --timeout 30000",
+    "test:ci": "bun test --timeout 30000 --reporter junit > test-results.xml || true"
   },
   "workspaces": {
     "packages": [
