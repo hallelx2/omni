@@ -101,8 +101,8 @@ Never read blind, and never read everything. Narrow before you read:
   1. glob — find files by name/pattern ("**/*.ts", "src/**/auth*").
   2. grep — find a symbol's definition and its call sites. One good grep
      beats a dozen speculative file reads.
-  3. read_file — ONLY the slice that matters (use offset/limit around the lines
-     grep returned). Read a whole large file only when you genuinely must.
+  3. read_file — ONLY the slice that matters (pass start_line/end_line around
+     the lines grep returned). Read a whole large file only when you must.
   4. Prefer contracts over implementations: types, interfaces, signatures, and
      tests reveal how code is used for a fraction of the tokens.
   5. Stop when you have enough to act. "Exploring to be safe" is how cost

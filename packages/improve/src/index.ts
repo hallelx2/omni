@@ -66,6 +66,11 @@ export type { TraceLine } from "./traces.ts"
 export { replayTrace, checkTrace } from "./replay.ts"
 export type { ReplayChecks } from "./replay.ts"
 
+/**
+ * Prompt-evolution loop (variant tournament). **@experimental** — built and
+ * unit-tested, but NOT wired into the CLI and NOT part of v1. Programmatic /
+ * research use only; the public surface and behaviour may change.
+ */
 export {
   emptyPool,
   addVariant,
