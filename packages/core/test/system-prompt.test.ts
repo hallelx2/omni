@@ -42,4 +42,20 @@ describe("buildSystemPrompt — environment", () => {
     expect(p).toContain("EXPLORING A CODEBASE")
     expect(p).toContain("contracts over implementations")
   })
+
+  test("carries the finish-the-job rule", () => {
+    expect(buildSystemPrompt({})).toContain("FINISH THE JOB")
+  })
+
+  test("teaches subagent delegation only when dispatch_agents is available", () => {
+    const withDispatch = buildSystemPrompt({
+      tools: [{ name: "dispatch_agents", description: "fan out to search subagents" }],
+    })
+    expect(withDispatch).toContain("DELEGATE EXPLORATION")
+
+    const without = buildSystemPrompt({
+      tools: [{ name: "grep", description: "search file contents" }],
+    })
+    expect(without).not.toContain("DELEGATE EXPLORATION")
+  })
 })
