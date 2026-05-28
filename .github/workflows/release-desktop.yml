@@ -47,11 +47,14 @@ jobs:
         with:
           workspaces: packages/desktop/src-tauri
 
-      - name: Linux build deps (webkit/gtk)
+      - name: Linux build deps (webkit/gtk + AppImage FUSE)
         if: matrix.os == 'ubuntu-22.04'
+        # libfuse2 lets the AppImage bundler (linuxdeploy, itself an AppImage)
+        # mount itself — ubuntu-22.04 runners no longer ship it by default, which
+        # is why bundling fails with "failed to run linuxdeploy".
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse2
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -60,6 +63,9 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Belt-and-suspenders for the FUSE issue above: make AppImage tools
+          # self-extract instead of FUSE-mounting, so bundling works on any runner.
+          APPIMAGE_EXTRACT_AND_RUN: 1
         with:
           projectPath: packages/desktop
           # Attach installers to the tag's release (creates a draft if absent).
