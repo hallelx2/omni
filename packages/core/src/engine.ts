@@ -16,7 +16,7 @@ import { ContextManager } from "./context.ts"
 import { AllowAllPermissions, type PermissionGate } from "./permissions.ts"
 import { parseReActFallback, toToolSchema, validateToolCall } from "./validator.ts"
 import { classifyError, type ClassifiedError } from "./util/errors.ts"
-import { combineSignals, mergeStreams, sleep } from "./util/streams.ts"
+import { combineSignals, sleep } from "./util/streams.ts"
 import { AsyncQueue } from "./util/async-queue.ts"
 import { accumulateUsage, zeroUsage } from "./util/usage.ts"
 import { toolCallSetSignature } from "./util/signature.ts"
@@ -359,9 +359,17 @@ export class Engine {
           break
         }
 
-        const executions = toolCalls.map((c) => this._executeToolCall(c, signal, enabledTools))
-        for await (const ev of mergeStreams(executions)) {
-          yield ev
+        // Tool calls run one at a time: each is fully resolved (permission →
+        // execute → result) before the next begins, so interactive surfaces
+        // pause cleanly on each prompt instead of firing them all at once.
+        for (const c of toolCalls) {
+          for await (const ev of this._executeToolCall(c, signal, enabledTools)) {
+            yield ev
+          }
+          if (signal.aborted) {
+            reason = "aborted"
+            break outer
+          }
         }
       }
 

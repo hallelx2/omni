@@ -334,10 +334,10 @@ describe("Engine — errors", () => {
   })
 })
 
-// ─── Parallel tool calls ───────────────────────────────────────────────────
+// ─── Sequential tool calls ─────────────────────────────────────────────────
 
-describe("Engine — parallel tool calls", () => {
-  test("multiple tool calls in one turn run concurrently", async () => {
+describe("Engine — sequential tool calls", () => {
+  test("multiple tool calls in one turn run one at a time, in order", async () => {
     const script: MockScript[] = [
       {
         kind: "tools",
@@ -356,10 +356,12 @@ describe("Engine — parallel tool calls", () => {
     const t0 = Date.now()
     const events = await collect(engine.run("go"))
     const elapsed = Date.now() - t0
-    // Three 100ms tools sequentially would be 300ms+; concurrently ~100–200ms.
-    expect(elapsed).toBeLessThan(250)
+    // Three 100ms tools run sequentially (no overlap) → at least ~300ms. This is
+    // the gate that lets interactive surfaces pause on each permission prompt.
+    expect(elapsed).toBeGreaterThanOrEqual(280)
     expect(only(events, "tool.result").length).toBe(3)
-    const tags = only(events, "tool.result").map((e) => (e.result as { tag: string }).tag).sort()
+    // Sequential execution preserves call order — results arrive a, b, c.
+    const tags = only(events, "tool.result").map((e) => (e.result as { tag: string }).tag)
     expect(tags).toEqual(["a", "b", "c"])
   })
 })
@@ -495,9 +497,9 @@ describe("Engine — retries", () => {
   })
 })
 
-// ─── Parallel tool calls — mixed outcomes ──────────────────────────────────
+// ─── Sequential tool calls — mixed outcomes ────────────────────────────────
 
-describe("Engine — parallel tool calls (mixed)", () => {
+describe("Engine — sequential tool calls (mixed)", () => {
   test("one tool succeeds while another fails — both events surface", async () => {
     const script: MockScript[] = [
       {
