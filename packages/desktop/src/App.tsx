@@ -5,7 +5,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { useApp } from "@/store/app"
 import { TitleBar } from "@/components/title-bar"
 import { ProjectRail } from "@/components/project-rail"
-import { SessionSidebar } from "@/components/session-sidebar"
+import { SidebarDock } from "@/components/sidebar-dock"
 import { StatusBar } from "@/components/status-bar"
 import { CommandPalette } from "@/components/command-palette"
 import { AddProjectDialog } from "@/components/add-project-dialog"
@@ -55,7 +55,7 @@ export function App() {
         <TitleBar />
         <div className="flex min-h-0 flex-1">
           <ProjectRail />
-          <SessionSidebar />
+          <SidebarDock />
           <PanelGroup direction="horizontal" className="min-w-0 flex-1">
             <Panel defaultSize={62} minSize={30} className="min-w-0">
               <ChatView />

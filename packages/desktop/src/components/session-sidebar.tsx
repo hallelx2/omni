@@ -1,4 +1,4 @@
-import { MoreHorizontal, Plus, Trash2, FolderOpen } from "lucide-react"
+import { MoreHorizontal, SquarePen, Trash2, FolderOpen, PanelLeftClose } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
@@ -8,7 +8,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ModelPicker } from "@/components/model-picker"
 import { useApp } from "@/store/app"
 import { cn, relativeTime } from "@/lib/utils"
 import type { SessionSummary } from "@/lib/protocol"
@@ -26,14 +25,14 @@ export function SessionSidebar() {
   const newSession = useApp((s) => s.newSession)
   const deleteSession = useApp((s) => s.deleteSession)
   const removeProject = useApp((s) => s.removeProject)
-  const setProjectModel = useApp((s) => s.setProjectModel)
+  const toggleSessionPanel = useApp((s) => s.toggleSessionPanel)
 
   if (!project) {
     return (
       <aside className="flex w-64 shrink-0 flex-col items-center justify-center gap-3 border-r border-sidebar-border bg-sidebar/40 p-6 text-center">
-        <FolderOpen className="size-7 text-muted-foreground/60" />
+        <FolderOpen className="size-7 text-muted-foreground/50" />
         <p className="text-sm text-muted-foreground text-balance">
-          Open a project folder to start a session.
+          Open a project to start a session.
         </p>
       </aside>
     )
@@ -44,7 +43,14 @@ export function SessionSidebar() {
       <div className="flex flex-col gap-3 border-b border-sidebar-border p-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold">{project.name}</h2>
+            <button
+              onClick={toggleSessionPanel}
+              title="Collapse panel"
+              className="group/sb flex w-full min-w-0 items-center gap-1 text-left"
+            >
+              <h2 className="truncate text-sm font-semibold">{project.name}</h2>
+              <PanelLeftClose className="size-3.5 shrink-0 text-transparent transition-colors group-hover/sb:text-muted-foreground" />
+            </button>
             <p className="truncate text-[11px] text-muted-foreground" title={project.path}>
               {project.path}
             </p>
@@ -67,16 +73,8 @@ export function SessionSidebar() {
           </DropdownMenu>
         </div>
 
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-muted-foreground">Default model</label>
-          <ModelPicker
-            value={project.modelRef}
-            onChange={(ref) => setProjectModel(project.id, ref)}
-          />
-        </div>
-
-        <Button size="sm" className="w-full" onClick={() => newSession(project.id)}>
-          <Plus className="size-4" /> New session
+        <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={() => newSession(project.id)}>
+          <SquarePen className="size-4" /> New session
         </Button>
       </div>
 
@@ -85,25 +83,15 @@ export function SessionSidebar() {
           {sessions.length === 0 ? (
             <p className="px-2 py-8 text-center text-xs text-muted-foreground">No sessions yet.</p>
           ) : (
-            groupSessions(sessions).map(
-              ({ label, list }) =>
-                list.length > 0 && (
-                  <div key={label}>
-                    <div className="px-2 pb-1 pt-2.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/55">
-                      {label}
-                    </div>
-                    {list.map((s) => (
-                      <SessionRow
-                        key={s.id}
-                        session={s}
-                        active={s.id === activeSessionId}
-                        onOpen={() => openSession(s.id)}
-                        onDelete={() => deleteSession(s.id)}
-                      />
-                    ))}
-                  </div>
-                ),
-            )
+            sessions.map((s) => (
+              <SessionRow
+                key={s.id}
+                session={s}
+                active={s.id === activeSessionId}
+                onOpen={() => openSession(s.id)}
+                onDelete={() => deleteSession(s.id)}
+              />
+            ))
           )}
         </div>
       </ScrollArea>
@@ -128,7 +116,7 @@ function SessionRow({
       onClick={onOpen}
       title={`${model} · ${relativeTime(session.updatedAt)}`}
       className={cn(
-        "tactile group relative cursor-pointer rounded-md px-3 py-1.5 pr-6",
+        "tactile group relative cursor-pointer rounded-md px-3 py-1.5 pr-7",
         active ? "bg-accent" : "hover:bg-accent/50",
       )}
     >
@@ -147,44 +135,18 @@ function SessionRow({
         ) : (
           <span className="shimmer min-w-0 flex-1 truncate text-[13px]">Naming…</span>
         )}
-        {session.status === "active" && (
-          <span className="size-1.5 shrink-0 rounded-full bg-success" />
-        )}
+        {session.status === "active" && <span className="size-1.5 shrink-0 rounded-full bg-success" />}
       </div>
       <button
         onClick={(e) => {
           e.stopPropagation()
           onDelete()
         }}
-        className="absolute right-1.5 top-1.5 hidden rounded-md p-1 text-muted-foreground hover:bg-destructive/15 hover:text-destructive group-hover:block"
+        className="absolute right-1.5 top-1.5 hidden size-5 place-items-center rounded-md text-muted-foreground hover:bg-destructive/15 hover:text-destructive group-hover:grid"
+        title="Delete session"
       >
         <Trash2 className="size-3.5" />
       </button>
     </div>
   )
-}
-
-function groupSessions(sessions: readonly SessionSummary[]): { label: string; list: SessionSummary[] }[] {
-  const now = new Date()
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-  const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000
-  const startOfWeek = startOfToday - 7 * 24 * 60 * 60 * 1000
-  const groups: Record<string, SessionSummary[]> = {
-    Today: [],
-    Yesterday: [],
-    "This Week": [],
-    Earlier: [],
-  }
-  for (const s of sessions) {
-    if (s.updatedAt >= startOfToday) groups.Today!.push(s)
-    else if (s.updatedAt >= startOfYesterday) groups.Yesterday!.push(s)
-    else if (s.updatedAt >= startOfWeek) groups["This Week"]!.push(s)
-    else groups.Earlier!.push(s)
-  }
-  return [
-    { label: "Today", list: groups.Today! },
-    { label: "Yesterday", list: groups.Yesterday! },
-    { label: "This Week", list: groups["This Week"]! },
-    { label: "Earlier", list: groups.Earlier! },
-  ]
 }

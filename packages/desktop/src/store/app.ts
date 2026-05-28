@@ -45,6 +45,7 @@ interface AppState {
   settingsOpen: boolean
   paletteOpen: boolean
   addProjectOpen: boolean
+  sessionPanelCollapsed: boolean
 
   // lifecycle
   init: () => Promise<void>
@@ -60,6 +61,8 @@ interface AppState {
   loadSessions: (projectId: string) => Promise<void>
   newSession: (projectId?: string) => Promise<void>
   openSession: (id: string) => Promise<void>
+  /** Open a session that may belong to a non-active project (rail flyout). */
+  openProjectSession: (projectId: string, sessionId: string) => Promise<void>
   deleteSession: (id: string) => Promise<void>
   renameSession: (id: string, title: string) => Promise<void>
 
@@ -77,6 +80,7 @@ interface AppState {
   setSettingsOpen: (o: boolean) => void
   setPaletteOpen: (o: boolean) => void
   setAddProjectOpen: (o: boolean) => void
+  toggleSessionPanel: () => void
 
   // internal
   _onServer: (msg: ServerMessage) => void
@@ -110,6 +114,7 @@ export const useApp = create<AppState>((set, get) => ({
   settingsOpen: false,
   paletteOpen: false,
   addProjectOpen: false,
+  sessionPanelCollapsed: false,
 
   init: async () => {
     socket.onStatus((conn) => set({ conn }))
@@ -194,6 +199,7 @@ export const useApp = create<AppState>((set, get) => ({
       const list = [session, ...(get().sessionsByProject[pid] ?? [])]
       set({
         sessionsByProject: { ...get().sessionsByProject, [pid]: list },
+        activeProjectId: pid,
         activeSessionId: session.id,
         runtimes: { ...get().runtimes, [session.id]: { ...emptySession(), loaded: true } },
       })
@@ -219,6 +225,14 @@ export const useApp = create<AppState>((set, get) => ({
       set({ runtimes: { ...get().runtimes, [id]: { ...emptySession(), loaded: true } } })
       toast.error("Couldn't open session", { description: (e as Error).message })
     }
+  },
+
+  openProjectSession: async (projectId, sessionId) => {
+    if (get().activeProjectId !== projectId) {
+      set({ activeProjectId: projectId })
+      if (!get().sessionsByProject[projectId]) await get().loadSessions(projectId)
+    }
+    await get().openSession(sessionId)
   },
 
   deleteSession: async (id) => {
@@ -287,6 +301,7 @@ export const useApp = create<AppState>((set, get) => ({
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   setAddProjectOpen: (addProjectOpen) => set({ addProjectOpen }),
+  toggleSessionPanel: () => set({ sessionPanelCollapsed: !get().sessionPanelCollapsed }),
 
   _onServer: (msg) => {
     if (msg.type === "event") {
