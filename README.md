@@ -17,8 +17,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
 [![Bun](https://img.shields.io/badge/bun-1.2+-000000?logo=bun&logoColor=white)](https://bun.sh)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/tests-305%20passing-brightgreen)](#status)
-[![Status](https://img.shields.io/badge/status-pre--alpha-orange)](#status)
+[![Tests](https://img.shields.io/badge/tests-571%20passing-brightgreen)](#status)
+[![Status](https://img.shields.io/badge/status-v0.1.0-blue)](#status)
 
 [**Quick start**](#-quick-start) •
 [**Docs**](./docs/architecture.md) •
@@ -97,7 +97,7 @@ If the harness compensates intelligently for what the model can't do — by prob
 - Interactive **CLI** (readline, slash commands, sessions)
 - **HTTP + WebSocket server** with permission forwarding
 - **Browser client** (minimal vanilla HTML/TS)
-- Scaffolds for **Tauri desktop** and **VS Code** extension
+- **Tauri desktop app** (React UI + bundled engine sidecar); minimal browser client
 
 </td>
 </tr>
@@ -107,7 +107,7 @@ If the harness compensates intelligently for what the model can't do — by prob
 
 - **Prebuilt subagents** — `explore`, `test`, `critique` ship in-repo as `AGENT.md` definitions, each a sandboxed child engine with its own model, tool subset, and **enforced** permission rules (regex allow/deny per tool — e.g. `test` may run `bun test` but not `rm -rf`, and write only `*.test.ts`). Override or add your own in `~/.omni/agents/<name>/AGENT.md` or workspace `.omni/agents/`.
 - **Parallel dispatch** — the agent calls a subagent directly as a tool, or fans several out at once with `dispatch_agents` (bounded concurrency, partial-failure isolation, abort propagation) and collects every result when they finish.
-- **Plan / Build modes** — `plan` restricts the main engine to read-only tools and runs the **Planner** first; `build` allows all tools and runs the **Critic** after each turn. Switch with `/plan` · `/build` · `/mode`; the agent can request a plan→build switch via `request_build_mode` (human-gated).
+- **Plan / Auto / Build modes** — `plan` = read-only tools + the **Planner** first; `build` = all tools + the **Critic** after + permission prompts; `auto` = all tools with prompts auto-allowed (unattended — safety guards still apply). Switch with `/plan` · `/auto` · `/build` · `/mode`; an opt-in classifier can pick the mode per turn, and the agent can request plan→build via `request_build_mode` (human-gated).
 - **Per-role models** — the planner, critic, and each subagent may run on a different model than the main agent (e.g. plan on Claude, execute on a local model), defaulting to the main model.
 
 ### Engine guarantees
@@ -278,8 +278,9 @@ All non-mock adapters go through **Vercel AI SDK 6**. Adding a new provider is r
 /usage        cumulative token usage and cost
 /session      current session ID
 /model        active model
-/mode         show or switch run mode (/mode plan | /mode build)
+/mode         show or switch run mode (/mode plan | auto | build)
 /plan         switch to plan mode (read-only + planner)
+/auto         switch to auto mode (full tools, no permission prompts)
 /build        switch to build mode (full tools + critic)
 /skill        pin/unpin a skill (/skill <name|off>)
 /history      compact view of conversation so far
@@ -292,11 +293,11 @@ All non-mock adapters go through **Vercel AI SDK 6**. Adding a new provider is r
 
 Three concrete mechanisms, in increasing autonomy:
 
-**1. Adaptive prompts.** On first contact with a model, Omni runs `probeModel` — a small battery of cheap prompts (~600 tokens) that classify the model along axes like *native tool calls?*, *instruction-following?*, *verbosity?*. `adapt(profile)` returns a strategy: which system prompt, whether to enable ReAct fallback, max iterations, output reserve. Results are cached per model in `~/.omni/db.sqlite`.
+**1. Adaptive prompts.** On first contact with a model, Omni runs `probeModel` — a small battery of cheap prompts (~600 tokens) that classify the model (native tool calls?, instruction-following?, verbosity?). `adapt(profile)` maps that to a strategy (which system prompt, ReAct fallback, iteration budget). **This is wired into startup** and cached per model in `~/.omni/db.sqlite`.
 
-**2. Session traces.** Every run writes a JSONL trace to `~/.omni/traces/` plus rows to SQLite. `scoreTrace` ranks completed sessions (model_done, low iteration count, no errors, diverse tool use). `replayTrace` + `checkTrace` re-run a trace against invariants — regression testing for agent behavior.
+**2. Session traces.** Every run writes a JSONL trace to `~/.omni/traces/` plus rows to SQLite. `scoreTrace` ranks completed sessions; `replayTrace` + `checkTrace` re-run a trace against invariants — a library for regression-testing agent behavior.
 
-**3. Prompt evolution.** A pool of system-prompt variants is maintained in SQLite. `tournamentSelect` picks the best by mean trace score; `mutatePrompt` produces a child variant. Over sessions, the prompts that actually perform rise to the top. *Infrastructure built and tested; CLI driver wiring is the next sprint.*
+**3. Prompt evolution** *(experimental)*. A genetic variant pool (`tournamentSelect`, `mutatePrompt`) is built and unit-tested, but **not** wired into the default loop — it ships as a programmatic API, not a v1 feature.
 
 ---
 
@@ -336,8 +337,8 @@ See [docs/architecture.md](./docs/architecture.md) for the full event taxonomy (
 | [`@omni/cli`](./packages/cli) | Interactive terminal — slash commands, permission prompts, session persistence |
 | [`@omni/server`](./packages/server) | HTTP + WebSocket server with WS-bridged permission requests |
 | [`@omni/web`](./packages/web) | Minimal browser client |
-| [`@omni/desktop`](./packages/desktop) | Tauri shell *(scaffold)* |
-| [`@omni/vscode`](./packages/vscode) | VS Code extension *(scaffold)* |
+| [`@omni/desktop`](./packages/desktop) | Tauri desktop app — React UI + bundled engine sidecar |
+| [`@omni/vscode`](./packages/vscode) | VS Code extension *(unfinished — not in this release)* |
 | [`@omni/cli-driver`](./packages/cli-driver) | Smoke-test driver |
 
 ---
@@ -372,12 +373,12 @@ export const shout: Tool<{ text: string }, { result: string }> = {
 
 | | |
 |---|---|
-| **Tests** | 305 passing across 40 files |
+| **Tests** | 571 passing across 65 files |
 | **Packages** | 11, all typecheck clean |
-| **Source** | ~7,500 lines of TypeScript |
-| **Verified live** | MiMo-V2.5-Pro (full tool-use, reasoning_content roundtrip) |
-| **Working surfaces** | CLI, HTTP/WS server, web client |
-| **Scaffolded** | Desktop (Tauri plan), VS Code (extension plan) |
+| **Source** | ~24,000 lines of TypeScript |
+| **Verified live** | MiMo-V2.5-Pro driven end-to-end on a test project (read → edit → run tests, self-corrected via the verifier loop); prompt caching measured **−80%** tokens/cost on a repeat task |
+| **Surfaces** | CLI (TUI + plain REPL), HTTP/WS server, web client, **Tauri desktop app** |
+| **Not in this release** | VS Code extension (kept private); prompt-evolution loop (experimental API) |
 
 ---
 
@@ -392,12 +393,12 @@ export const shout: Tool<{ text: string }, { result: string }> = {
 | **2. Types & API** | TSDoc on every public symbol, JSONSchema7 for tool params, tiered exports, TypeDoc generates clean docs |
 | **3. Adapters** | 7 providers via Vercel AI SDK 6, reasoning_content roundtrip, cost computation, fake-fetch e2e tests |
 | **4. Tools** | 8 built-ins + MCP (in-memory + real stdio tested), cross-platform shell with ANSI strip, path safety |
-| **5. Context** | tiktoken tokenizer, TokenBudgetStrategy, tool-result chunking, `context.compacted` events |
-| **6. Permissions** | 4 gate types + audit + rule patterns + `looksDestructive` predicate |
-| **7. Third brain** | Planner, Critic, Memory all unit-tested |
-| **8. Self-improvement** | probe (cached), adapt, FileTracer, scoreTrace, replay + checkTrace, variant pool |
-| **9. Storage** | bun:sqlite, versioned migrations, 7 repos, FK cascades |
-| **10. CLI** | interactive REPL, slash commands, session/event persistence |
+| **5. Context** | tiktoken tokenizer, **summarize-by-default compaction** (older turns compacted, not dropped), tool-result chunking, prompt-cache token surfacing |
+| **6. Permissions** | gate types + audit + rule patterns; **destructive-bash denied by default**, opt-in workspace confinement, mode-aware (auto) gate |
+| **7. Third brain** | Planner, Critic, keyword + embedding (`VectorMemory`) memory — all unit-tested and wired |
+| **8. Self-improvement** | probe + adapt **wired into startup**; FileTracer on every run; scoreTrace/replay library; variant pool experimental |
+| **9. Storage** | bun:sqlite, versioned migrations, 8 repos, FK cascades |
+| **10. CLI** | TUI + plain REPL, slash commands, **plan/auto/build modes** + intent classifier, **long-term memory**, session persistence |
 | **11. Surfaces** | server WS with permission forwarding tested 3 ways; web client with permission UI |
 | **12. Testing** | typecheck script, CI workflow, trace replay, 4 property tests |
 | **13. Documentation** | architecture + 2 author guides + .env.example + TypeDoc |
@@ -407,18 +408,17 @@ export const shout: Tool<{ text: string }, { result: string }> = {
 <details>
 <summary><b>What's still imperfect (the honest list)</b></summary>
 
-- **Engine** — `engine.ts` is ~440 lines (could split executor); no property test proving aborted runs never emit `tool.result`
+- **Engine** — the executor could be split out of `engine.ts`; no property test proving aborted runs never emit `tool.result`
 - **Adapters** — rate-limit retry untested live; Google adapter not run end-to-end; Anthropic extended thinking not e2e-verified
-- **Tools** — `grep` ripgrep path covered only when `rg` happens to be installed during the test run; `web_fetch` markdown untested for complex layouts
-- **Context** — `SummarizingStrategy` exists but the wired default is still `TokenBudgetStrategy` (drops messages, doesn't summarize); no semantic recall in the loop; one tokenizer for all models (should be per-adapter)
-- **Permissions** — destructive bash is now denied by default on the main engine, with opt-in workspace confinement (`restrictToWorkspace`) and an `allowlistGate` preset; the bash path-confinement is heuristic, not a true per-command sandbox
-- **Third brain** — `VectorMemory` (embedding recall) exists but isn't wired into the loop yet; the base `Memory` is linear-scan keyword recall
-- **Self-improvement** — probe/adapt/evolve are *built* but not yet *wired into* the CLI flow as the default loop
+- **Tools** — `grep`'s ripgrep path is exercised only when `rg` is installed; `web_fetch` markdown untested on complex layouts
+- **Permissions** — destructive-bash deny + opt-in workspace confinement (`restrictToWorkspace`) + `allowlistGate` ship, but the bash path-confinement is heuristic, not a true per-command sandbox
+- **Self-improvement** — probe/adapt are wired; the prompt-**evolution** loop is built + tested but intentionally **not** wired for v1 (experimental API)
 - **Storage** — no backup/restore command; forward-only migrations
 - **CLI** — slash arg parsing is space-split (no quoted strings); no `/sessions` continue command yet
-- **Surfaces** — desktop and vscode are scaffolds (architecture plans in their `index.ts`); web uses `window.confirm` for permissions
-- **Testing** — no load test; no chaos/fuzz on adapter translation layer
-- **Docs** — no `examples/` directory; no FAQ
+- **Desktop** — ships per-OS installers via CI, but no auto-update yet; the **VS Code** extension is unfinished and excluded from this release
+- **Prompt caching** — surfaced + billed for OpenAI-compatible (incl. MiMo) and Anthropic; cached-token accounting on other providers depends on what their API reports
+- **Testing** — no load test; no chaos/fuzz on the adapter translation layer
+- **Docs** — no `examples/` directory; no FAQ yet
 
 </details>
 
