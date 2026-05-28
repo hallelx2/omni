@@ -19,6 +19,19 @@ export const ConfigSchema = z.object({
   maxIterations: z.number().int().positive().optional(),
   enableReActFallback: z.boolean().optional(),
 
+  /** Which shell the `bash` tool runs commands through. */
+  bash: z
+    .object({
+      /**
+       * "auto" (default) prefers Git Bash on Windows when installed — so the
+       * agent can run Linux-level commands (sed, awk, grep, …) — and falls back
+       * to PowerShell otherwise. "powershell" / "gitbash" force one. POSIX always
+       * uses bash regardless.
+       */
+      shell: z.enum(["auto", "powershell", "gitbash"]).optional(),
+    })
+    .optional(),
+
   providers: z
     .object({
       mimo: z.object({ apiKey: z.string().optional(), baseURL: z.string().optional() }).optional(),

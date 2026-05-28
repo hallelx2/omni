@@ -165,6 +165,8 @@ export interface BuildPromptOptions {
   readonly shell?: string
   /** Shell family — selects the concrete syntax rules block. */
   readonly shellFamily?: "powershell" | "posix"
+  /** Concrete shell flavor (e.g. "gitbash") for finer prompt tailoring. */
+  readonly shellKind?: "pwsh" | "powershell" | "gitbash" | "bash"
   /** OS version/release string (e.g. from os.release()). */
   readonly osVersion?: string
   /** CPU architecture (e.g. process.arch). */
@@ -198,7 +200,11 @@ export function buildSystemPrompt(opts: BuildPromptOptions = {}): string {
   env.push(
     `Platform: ${process.platform}${opts.arch ? ` ${opts.arch}` : ""}${opts.osVersion ? ` — ${opts.osVersion}` : ""}`,
   )
-  if (opts.shell) env.push(`Shell (the bash tool executes through this): ${opts.shell}`)
+  if (opts.shell) {
+    env.push(
+      `Shell — the \`bash\` tool runs commands through this; write EVERY \`bash\` command in its syntax: ${opts.shell}`,
+    )
+  }
   parts.push(env.join("\n"))
 
   // ── Shell discipline (concrete, per-shell) ─────────────────────────────────
@@ -218,15 +224,22 @@ export function buildSystemPrompt(opts: BuildPromptOptions = {}): string {
       ].join("\n"),
     )
   } else if (opts.shellFamily === "posix") {
-    parts.push(
-      [
-        "═══ SHELL: BASH ═══",
+    const lines = [
+      "═══ SHELL: BASH ═══",
+      "",
+      "The `bash` tool runs POSIX bash. For file work still prefer the dedicated",
+      "tools (glob, grep, read_file, edit) over `find`/`grep`/`cat`/`sed` — faster,",
+      "safer, and they don't flood the context with raw output.",
+    ]
+    if (opts.shellKind === "gitbash") {
+      lines.push(
         "",
-        "The `bash` tool runs POSIX bash. For file work still prefer the dedicated",
-        "tools (glob, grep, read_file, edit) over `find`/`grep`/`cat`/`sed` — faster,",
-        "safer, and they don't flood the context with raw output.",
-      ].join("\n"),
-    )
+        "This is Git Bash on Windows (MSYS): Unix tools (sed, awk, grep, …) are",
+        "available, but the filesystem is Windows — use POSIX-style paths",
+        "(/c/Users/…, forward slashes), and expect native .exe programs and CRLF.",
+      )
+    }
+    parts.push(lines.join("\n"))
   }
 
   // ── Tools ────────────────────────────────────────────────────────────────

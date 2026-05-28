@@ -30,6 +30,22 @@ describe("buildSystemPrompt — environment", () => {
     expect(p).not.toContain("SHELL: POWERSHELL")
   })
 
+  test("gitbash kind adds the Git-Bash-on-Windows note to the posix block", () => {
+    const p = buildSystemPrompt({
+      shell: "Git Bash (C:/.../bash.exe)",
+      shellFamily: "posix",
+      shellKind: "gitbash",
+    })
+    expect(p).toContain("SHELL: BASH")
+    expect(p).toContain("Git Bash on Windows")
+    expect(p).toContain("/c/Users")
+  })
+
+  test("the shell line is directive about matching the shell's syntax", () => {
+    const p = buildSystemPrompt({ shell: "PowerShell 7+ (pwsh)" })
+    expect(p).toContain("write EVERY `bash` command in its syntax")
+  })
+
   test("no shell block when family is unset", () => {
     const p = buildSystemPrompt({})
     expect(p).not.toContain("SHELL: POWERSHELL")

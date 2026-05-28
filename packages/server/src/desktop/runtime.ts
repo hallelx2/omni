@@ -49,7 +49,7 @@ import {
 } from "@omni/adapters"
 import {
   bash, readFile, writeFile, edit, multiEdit, applyPatch, glob, grep, webFetch,
-  MCPManager,
+  MCPManager, bashShell, setBashShellPref,
   PatchAppliesVerifier, FileParsesVerifier, TypecheckVerifier, TestVerifier,
 } from "@omni/tools"
 import {
@@ -306,10 +306,16 @@ export class SessionRuntime {
 
     const tools: Tool[] = [...this.builtinTools, ...(this.mcpReady ? this.mcp.tools() : [])]
     const verifiers = buildVerifiers(config)
+    setBashShellPref(config.bash?.shell)
+    const shellInfo = bashShell()
     const systemPrompt =
       config.systemPrompt ??
       buildSystemPrompt({
         cwd: projectPath,
+        shell: shellInfo.label,
+        shellFamily: shellInfo.family,
+        shellKind: shellInfo.kind,
+        isGitRepo: existsSync(join(projectPath, ".git")),
         tools: tools.map((t) => ({ name: t.name, description: t.description })),
         verifiers: verifiers.map((v) => v.name),
         nativeToolCalls: true,

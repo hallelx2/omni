@@ -50,7 +50,7 @@ import {
 import {
   bash, readFile, writeFile, edit, multiEdit, applyPatch, glob, grep, webFetch, MCPManager,
   PatchAppliesVerifier, FileParsesVerifier, TypecheckVerifier, TestVerifier,
-  makeDispatchAgentsTool, bashShell,
+  makeDispatchAgentsTool, bashShell, setBashShellPref,
 } from "@omni/tools"
 import { Storage, SessionsRepo, MessagesRepo, EventsRepo, AuditRepo, ProfilesRepo, VectorMemoryRepo } from "@omni/storage"
 import {
@@ -355,13 +355,15 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
   // actual tool set, the active verifiers) and the probed model's tuning
   // (ReAct format if no native tool calls; stronger terseness if verbose).
   // A user-set config.systemPrompt overrides the whole thing.
+  setBashShellPref(config.bash?.shell)
   const shellInfo = bashShell()
   const baseSystemPrompt =
     config.systemPrompt ??
     buildSystemPrompt({
       cwd: process.cwd(),
       shell: shellInfo.label,
-      shellFamily: shellInfo.isWindows ? "powershell" : "posix",
+      shellFamily: shellInfo.family,
+      shellKind: shellInfo.kind,
       osVersion: release(),
       arch: process.arch,
       isGitRepo: existsSync(join(process.cwd(), ".git")),
