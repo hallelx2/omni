@@ -42,6 +42,7 @@ export { SqliteProfileCache } from "./sqlite-cache.ts"
 
 export {
   loadSkills,
+  skillSearchRoots,
   findMatchingSkill,
   filterToolsBySkill,
   setFrontmatterParser,
@@ -52,8 +53,11 @@ export {
   loadAgents,
   agentPermissionGate,
   setAgentFrontmatterParser,
+  routeAgents,
 } from "./agents.ts"
-export type { Agent, AgentToolRules } from "./agents.ts"
+export type { Agent, AgentToolRules, RouteMatch } from "./agents.ts"
+
+export { renderSkillForAgent } from "./skill-loader.ts"
 export { DEFAULT_AGENT_FILES } from "./default-agents.ts"
 export type { DefaultAgentFile } from "./default-agents.ts"
 

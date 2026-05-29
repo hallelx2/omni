@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
-import { join } from "node:path"
+import { homedir } from "node:os"
+import { join, delimiter } from "node:path"
 import { userSkillsDir, workspacePaths } from "@omni/core"
 
 /**
@@ -115,15 +116,40 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 }
 
 /**
- * Load all skills, workspace first (overriding user-level skills with the
- * same name), then user-level. Returns a Map keyed by skill name.
+ * The directories scanned for skills, lowest-precedence first. Later roots
+ * override earlier ones on a name collision (so the user's `~/.omni/skills`
+ * and the workspace win over installed `~/.claude/skills`).
+ *
+ *   1. `~/.claude/skills`            — skills installed for Claude Code (read-only consumers)
+ *   2. `$OMNI_SKILL_ROOTS` entries   — extra roots, OS-path-delimited
+ *   3. `~/.omni/skills`              — the user's authored skills
+ *   4. `<workspace>/.omni/skills`    — per-project skills
+ */
+export function skillSearchRoots(cwd?: string): Array<{ dir: string; source: "user" | "workspace" }> {
+  const roots: Array<{ dir: string; source: "user" | "workspace" }> = []
+  // Installed Claude-Code skills. Overridable via OMNI_CLAUDE_SKILLS_DIR; set it
+  // to "" to disable (used by tests for hermeticity, since the default reads the
+  // real home dir which OMNI_HOME does not redirect).
+  const claude = process.env.OMNI_CLAUDE_SKILLS_DIR ?? join(homedir(), ".claude", "skills")
+  if (claude && existsSync(claude)) roots.push({ dir: claude, source: "user" })
+  for (const r of process.env.OMNI_SKILL_ROOTS?.split(delimiter) ?? []) {
+    if (r && existsSync(r)) roots.push({ dir: r, source: "user" })
+  }
+  roots.push({ dir: userSkillsDir(), source: "user" })
+  const ws = workspacePaths(cwd)
+  if (ws) roots.push({ dir: ws.skills, source: "workspace" })
+  return roots
+}
+
+/**
+ * Load all skills from every search root. Later roots override earlier ones on
+ * a name collision (workspace + `~/.omni/skills` win over installed skills).
+ * Returns a Map keyed by skill name.
  */
 export function loadSkills(cwd?: string): Map<string, Skill> {
   const map = new Map<string, Skill>()
-  for (const s of loadFromDir(userSkillsDir(), "user")) map.set(s.name, s)
-  const ws = workspacePaths(cwd)
-  if (ws) {
-    for (const s of loadFromDir(ws.skills, "workspace")) map.set(s.name, s)
+  for (const { dir, source } of skillSearchRoots(cwd)) {
+    for (const s of loadFromDir(dir, source)) map.set(s.name, s)
   }
   return map
 }

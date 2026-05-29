@@ -7,6 +7,8 @@
  * which must not depend on `@omni/adapters`.
  */
 import { z } from "zod"
+import { dirname, relative, resolve, isAbsolute } from "node:path"
+import { existsSync, readFileSync } from "node:fs"
 import {
   Engine,
   asSubagent,
@@ -25,7 +27,7 @@ import {
   OpenAIAdapter,
   GoogleAdapter,
 } from "@omni/adapters"
-import { agentPermissionGate, type Agent } from "@omni/improve"
+import { agentPermissionGate, renderSkillForAgent, type Agent, type Skill } from "@omni/improve"
 
 // ─── Adapter resolution (per-agent / per-planner / per-critic models) ────────
 
@@ -179,6 +181,51 @@ export interface BuildAgentDeps {
   readonly resolveModel: (ref?: string) => ModelAdapter
   readonly cwd?: string
   readonly env?: Readonly<Record<string, string>>
+  /** Loaded skills keyed by name (from loadSkills) — attached per agent.skills. */
+  readonly skills?: ReadonlyMap<string, Skill>
+  /** Renders a skill into a prompt block; defaults to renderSkillForAgent. */
+  readonly renderSkill?: (skill: Skill, mode: "summary" | "full") => string
+}
+
+/** True when `p` resolves inside `base` (blocks `../` traversal in context files). */
+function isInside(base: string, p: string): boolean {
+  const rel = relative(base, p)
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel)
+}
+
+/**
+ * Compose a specialized subagent's system prompt: its own body, then each
+ * attached skill's rendered block, then any extra context .md files declared in
+ * its frontmatter (user/workspace agents only — defaults ship their guidance
+ * inline). Attaching a skill is purely additive to the PROMPT — it never widens
+ * the agent's tool set; `agent.tools` remains the security boundary.
+ */
+export function composeAgentSystemPrompt(agent: Agent, deps: BuildAgentDeps): string {
+  const parts: string[] = [agent.systemPrompt]
+
+  if (agent.skills?.length && agent.skillResources !== "none" && deps.skills) {
+    const render = deps.renderSkill ?? renderSkillForAgent
+    const mode = agent.skillResources === "full" ? "full" : "summary"
+    for (const name of agent.skills) {
+      const skill = deps.skills.get(name)
+      if (skill) parts.push(render(skill, mode)) // missing skill → warned at bootstrap
+    }
+  }
+
+  if (agent.context?.length && agent.source !== "default") {
+    const base = dirname(agent.path) // <dir>/<name>/AGENT.md → <dir>/<name>
+    for (const rel of agent.context) {
+      const p = resolve(base, rel)
+      if (existsSync(p) && isInside(base, p)) {
+        try {
+          parts.push(`## Context: ${rel}\n` + readFileSync(p, "utf8"))
+        } catch {
+          // unreadable context file is non-fatal — skip it
+        }
+      }
+    }
+  }
+  return parts.join("\n\n")
 }
 
 /**
@@ -194,7 +241,7 @@ export function buildAgentEngine(agent: Agent, deps: BuildAgentDeps): Engine {
     model: deps.resolveModel(agent.model),
     tools,
     permissions: agentPermissionGate(agent),
-    systemPrompt: agent.systemPrompt,
+    systemPrompt: composeAgentSystemPrompt(agent, deps),
     maxIterations: agent.maxIterations ?? deps.config.maxIterations ?? 12,
     cwd: deps.cwd,
     env: deps.env,

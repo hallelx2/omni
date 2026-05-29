@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import { z } from "zod"
-import { resolveAdapter, buildAgentEngine, makeAgentTool, structuredConfigFor } from "../src/agents-runtime.ts"
+import { resolveAdapter, buildAgentEngine, makeAgentTool, structuredConfigFor, composeAgentSystemPrompt } from "../src/agents-runtime.ts"
 import { MockAdapter } from "@omni/adapters"
 import type { Config, ModelAdapter, Tool, ToolContext } from "@omni/core"
-import type { Agent } from "@omni/improve"
+import type { Agent, Skill } from "@omni/improve"
 
 const fallback: ModelAdapter = new MockAdapter({ id: "fallback", script: [{ kind: "text", text: "fb" }] })
 const emptyConfig = {} as Config
@@ -99,6 +99,33 @@ describe("buildAgentEngine / makeAgentTool", () => {
     const [a, b] = await Promise.all([tool.execute({ task: "1" }, ctx), tool.execute({ task: "2" }, ctx)])
     expect(a.result).toBe("done")
     expect(b.result).toBe("done")
+  })
+
+  test("composeAgentSystemPrompt injects attached skills (and honors 'none')", () => {
+    const skill: Skill = {
+      name: "demo",
+      description: "demo skill",
+      triggers: [],
+      systemPrompt: "DEMOBODY",
+      source: "user",
+      path: "",
+    }
+    const skills = new Map<string, Skill>([["demo", skill]])
+    const withSkill: Agent = { ...agent, skills: ["demo"] }
+
+    const out = composeAgentSystemPrompt(withSkill, { ...deps, skills })
+    expect(out).toContain("be terse") // the agent body
+    expect(out).toContain("## Skill: demo")
+    expect(out).toContain("DEMOBODY")
+    expect(out.indexOf("be terse")).toBeLessThan(out.indexOf("## Skill: demo"))
+
+    // missing skill → body only, no throw
+    const miss = composeAgentSystemPrompt({ ...agent, skills: ["nope"] }, { ...deps, skills })
+    expect(miss).toBe("be terse")
+
+    // skillResources "none" suppresses injection
+    const none = composeAgentSystemPrompt({ ...withSkill, skillResources: "none" }, { ...deps, skills })
+    expect(none).toBe("be terse")
   })
 
   test("streams a clean child-activity trace via onProgress (no model.delta spam)", async () => {

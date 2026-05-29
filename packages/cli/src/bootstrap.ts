@@ -69,6 +69,7 @@ import {
   EVOLUTION_SEED,
   loadSkills,
   loadAgents,
+  renderSkillForAgent,
   setFrontmatterParser,
   setAgentFrontmatterParser,
   Planner,
@@ -250,11 +251,17 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
       cache: adapterCache,
       warn: (m) => modelWarnings.push(m),
     })
+  // Skills are loaded BEFORE agent tools so specialized agents can attach them
+  // (frontend-engineer → frontend-design, etc.). loadSkills now also reads
+  // ~/.claude/skills, so installed Claude skills are reachable.
+  const skills = loadSkills()
   const agentBuildDeps: BuildAgentDeps = {
     tools: builtinTools,
     config,
     resolveModel,
     cwd: process.cwd(),
+    skills,
+    renderSkill: renderSkillForAgent,
   }
 
   const reservedNames = new Set<string>([
@@ -280,6 +287,12 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
   // Eagerly resolve per-agent model overrides so a missing key surfaces at
   // startup (warming the shared cache) rather than silently on first dispatch.
   for (const a of agents.values()) if (a.model) resolveModel(a.model)
+  // Warn once if any agent references a skill that isn't installed.
+  for (const a of agents.values()) {
+    for (const s of a.skills ?? []) {
+      if (!skills.has(s)) modelWarnings.push(`agent "${a.name}": skill "${s}" not found`)
+    }
+  }
   const dispatchTool =
     agentsEnabled && agentToolMap.size > 0
       ? makeDispatchAgentsTool({
@@ -424,6 +437,7 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
       verifiers: verifiers.map((v) => v.name),
       nativeToolCalls: activeProfile?.nativeToolCalls ?? true,
       verbose: activeProfile?.verboseByDefault ?? false,
+      extra: agentRoutingBlock(agents, agentToolMap),
     })
 
   progress("starting engine…")
@@ -454,8 +468,7 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
   })
   sessions.create(engine.sessionId(), modelName)
 
-  // ─── Skills ─────────────────────────────────────────────────────────────
-  const skills = loadSkills()
+  // ─── Skills (loaded earlier, before agent tools) ─────────────────────────
   const skillAutoRoute = config.skills?.autoRoute !== false
   const skillsEnabled: ReadonlySet<string> = (() => {
     const enabled = config.skills?.enabled
@@ -703,6 +716,32 @@ export function buildContextStrategy(
         ...(c?.summarizeAboveTokens !== undefined ? { summariseAboveTokens: c.summarizeAboveTokens } : {}),
       })
   }
+}
+
+/**
+ * A compact routing block appended to the main system prompt: lists each
+ * specialized subagent that became a tool, with its language/domain hints, so
+ * the model delegates matching work. Returns undefined when there are none.
+ */
+function agentRoutingBlock(
+  agents: Map<string, Agent>,
+  agentToolMap: ReadonlyMap<string, unknown>,
+): string | undefined {
+  const usable = [...agents.values()].filter((a) => agentToolMap.has(a.name))
+  if (usable.length === 0) return undefined
+  const lines = usable.map((a) => {
+    const langs = a.languages?.length ? ` [langs: ${a.languages.join(", ")}]` : ""
+    const doms = a.domains?.length ? ` [domains: ${a.domains.join(", ")}]` : ""
+    return `- ${agentToolName(a.name)}: ${a.description}${langs}${doms}`
+  })
+  return [
+    "═══ SPECIALIZED SUBAGENTS — DELEGATE MATCHING WORK ═══",
+    "",
+    "Route a task to the subagent whose languages/domains match it; each runs in its own",
+    "sandbox with its own tools and permissions. Use dispatch_agents to fan several",
+    "independent tasks out in parallel.",
+    ...lines,
+  ].join("\n")
 }
 
 function buildPermissions(

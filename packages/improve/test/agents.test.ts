@@ -25,13 +25,36 @@ function writeAgent(name: string, body: string): void {
 }
 
 describe("loadAgents", () => {
-  test("loads the three shipped defaults on an empty home", () => {
+  test("loads the shipped defaults on an empty home", () => {
     const agents = loadAgents()
-    expect([...agents.keys()].sort()).toEqual(["critique", "explore", "test"])
+    expect([...agents.keys()].sort()).toEqual([
+      "backend-go",
+      "backend-node",
+      "backend-python",
+      "critique",
+      "data-engineer",
+      "explore",
+      "frontend-engineer",
+      "test",
+    ])
     const explore = agents.get("explore")!
     expect(explore.source).toBe("default")
     expect(explore.tools).toEqual(["read_file", "glob", "grep", "web_fetch"])
     expect(explore.systemPrompt.length).toBeGreaterThan(0)
+    // existing agents carry no skill/language fields (back-compat).
+    expect(explore.skills).toBeUndefined()
+    expect(explore.languages).toBeUndefined()
+  })
+
+  test("specialized defaults carry skills + lowercased routing hints", () => {
+    const agents = loadAgents()
+    const fe = agents.get("frontend-engineer")!
+    expect(fe.skills).toEqual(["frontend-design", "aceternity-ui", "web-design-guidelines"])
+    expect(fe.skillResources).toBe("summary")
+    expect(fe.domains).toContain("react")
+    const de = agents.get("data-engineer")!
+    expect(de.skills).toEqual(["senior-data-engineer"])
+    expect(de.skillResources).toBe("full")
   })
 
   test("parses JSON-frontmatter permission rules on the test agent", () => {

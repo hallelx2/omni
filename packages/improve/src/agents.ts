@@ -66,6 +66,16 @@ export interface Agent {
   readonly allowDestructive?: boolean
   readonly maxIterations?: number
   readonly history?: "isolate" | "keep" | { readonly keepLast: number }
+  /** Skill names to load and inline into this agent's system prompt. */
+  readonly skills?: readonly string[]
+  /** Language hints used by the auto-router (e.g. ["typescript", "python"]). Lowercased. */
+  readonly languages?: readonly string[]
+  /** Domain hints used by the auto-router (e.g. ["frontend", "data"]). Lowercased. */
+  readonly domains?: readonly string[]
+  /** Additional .md files (relative to the agent dir) appended to the prompt. */
+  readonly context?: readonly string[]
+  /** How much skill body to inline. Default "summary". */
+  readonly skillResources?: "summary" | "full" | "none"
   readonly systemPrompt: string
   readonly source: "default" | "user" | "workspace"
   readonly path: string
@@ -153,10 +163,24 @@ function buildAgent(
     allowDestructive: fm.allowDestructive === true || fm.allow_destructive === true,
     maxIterations: num(fm.maxIterations) ?? num(fm.max_iterations),
     history: parseHistory(fm.history),
+    skills: toStringArray(fm.skills),
+    languages: lowerArray(toStringArray(fm.languages)),
+    domains: lowerArray(toStringArray(fm.domains)),
+    context: toStringArray(fm.context),
+    skillResources:
+      fm.skillResources === "full" || fm.skillResources === "none"
+        ? fm.skillResources
+        : fm.skillResources === "summary"
+          ? "summary"
+          : undefined,
     systemPrompt: body.trim(),
     source,
     path,
   }
+}
+
+function lowerArray(v: readonly string[] | undefined): readonly string[] | undefined {
+  return v?.map((s) => s.toLowerCase())
 }
 
 // ─── Loading ────────────────────────────────────────────────────────────────
@@ -281,4 +305,37 @@ export function agentPermissionGate(agent: Agent): PermissionGate {
     rules,
     defaultDecision: agent.permissionDefault ?? "deny",
   })
+}
+
+// ─── Routing (suggest a specialized agent for a task) ────────────────────────
+
+export interface RouteMatch {
+  readonly agent: string
+  readonly score: number
+}
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+/**
+ * Score each agent against a task string by counting language/domain hint hits
+ * (word-boundary, case-insensitive). Returns matches sorted high→low; empty
+ * when nothing matches (the caller falls back to the general engine).
+ *
+ * Routing only SUGGESTS an agent — the agent's permission gate is unchanged and
+ * remains the security boundary. The main model still makes the final call.
+ */
+export function routeAgents(task: string, agents: Iterable<Agent>): readonly RouteMatch[] {
+  const lower = task.toLowerCase()
+  const out: RouteMatch[] = []
+  for (const a of agents) {
+    const hints = [...(a.languages ?? []), ...(a.domains ?? [])]
+    let score = 0
+    for (const h of hints) {
+      if (new RegExp(`\\b${escapeRe(h)}\\b`).test(lower)) score++
+    }
+    if (score > 0) out.push({ agent: a.name, score })
+  }
+  return out.sort((x, y) => y.score - x.score)
 }
