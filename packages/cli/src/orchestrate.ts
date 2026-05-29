@@ -36,6 +36,12 @@ export interface OrchestrationDeps {
    * is disabled. The closure owns its own error handling — it must not throw.
    */
   readonly recallMemory?: (input: string) => Promise<string | null>
+  /**
+   * The active prompt-evolution variant's operating-rules text, layered as the
+   * first block of the per-run system prefix (on top of the engine's
+   * environment-aware base prompt). Null/omitted when evolution is off.
+   */
+  readonly activeVariantText?: string | null
 }
 
 export interface TurnContext {
@@ -128,6 +134,7 @@ export async function runTurn(
   }
 
   const systemPromptPrefix = composeSystemPrefix(
+    deps.activeVariantText ?? null,
     memoryBlock,
     plannerBlock,
     turn.activeSkill?.systemPrompt ?? null,

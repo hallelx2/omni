@@ -77,6 +77,7 @@ const orchestration: OrchestrationDeps = {
   criticAutoRetry: deps.criticAutoRetry,
   fileTracer: deps.fileTracer,
   recallMemory: deps.recallMemory,
+  activeVariantText: deps.activeVariantText,
 }
 const sink: OrchestrationSink = {
   onEngineEvent(ev) {
@@ -174,6 +175,11 @@ async function run(): Promise<void> {
       onContinueSession: deps.continueSession,
       mode: deps.mode.get(),
       onModeChange: (m, s) => deps.mode.set(m, s ?? "manual"),
+      variantsRepo: deps.variants,
+      evolveModelId: deps.evolveModelId,
+      activeVariantId: deps.activeVariantId,
+      evolveMode: deps.evolveMode,
+      evolveEnabled: deps.config.improve?.evolve?.enabled === true,
     })
     let effectiveInput = input
     if (cmdResult) {

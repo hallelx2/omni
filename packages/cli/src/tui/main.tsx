@@ -194,6 +194,8 @@ function ChatApp(props: {
     critic: deps.critic,
     criticAutoRetry: deps.criticAutoRetry,
     fileTracer: deps.fileTracer,
+    recallMemory: deps.recallMemory,
+    activeVariantText: deps.activeVariantText,
   }
   const sink: OrchestrationSink = {
     onEngineEvent: (ev) => store.pushEvent(ev),
@@ -314,6 +316,11 @@ function ChatApp(props: {
         onContinueSession: (id) => deps.continueSession(id),
         mode: deps.mode.get(),
         onModeChange: (m, s) => deps.mode.set(m, s ?? "manual"),
+        variantsRepo: deps.variants,
+        evolveModelId: deps.evolveModelId,
+        activeVariantId: deps.activeVariantId,
+        evolveMode: deps.evolveMode,
+        evolveEnabled: deps.config.improve?.evolve?.enabled === true,
       })
       if (!cmd) {
         store.pushSystem(`unknown command. type /help to list.`, "warn")

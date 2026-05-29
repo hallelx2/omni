@@ -92,6 +92,16 @@ export const MIGRATIONS: readonly string[] = [
     CREATE INDEX IF NOT EXISTS idx_vector_memory_kind ON vector_memory(kind);
     CREATE INDEX IF NOT EXISTS idx_vector_memory_created ON vector_memory(created_at);
   `,
+
+  // 5 — per-model prompt variants. The original prompt_variants table (mig 3)
+  // was a single global pool; prompt evolution is per-model, so add a model_id
+  // dimension + supporting index. Pre-existing rows (if any) are tagged
+  // "__legacy__" and ignored by the model-scoped pool API.
+  `
+    ALTER TABLE prompt_variants ADD COLUMN model_id TEXT NOT NULL DEFAULT '__legacy__';
+    CREATE INDEX IF NOT EXISTS idx_prompt_variants_model
+      ON prompt_variants(model_id, created_at);
+  `,
 ]
 
 /** Lightweight wrapper around bun:sqlite with versioned migrations. */

@@ -37,6 +37,7 @@ import {
   type ContextStrategy,
   type OmniPaths,
   type WorkspacePaths,
+  type EngineEvent,
 } from "@omni/core"
 import {
   MockAdapter,
@@ -52,12 +53,20 @@ import {
   PatchAppliesVerifier, FileParsesVerifier, TypecheckVerifier, TestVerifier,
   makeDispatchAgentsTool, bashShell, setBashShellPref,
 } from "@omni/tools"
-import { Storage, SessionsRepo, MessagesRepo, EventsRepo, AuditRepo, ProfilesRepo, VectorMemoryRepo } from "@omni/storage"
+import { Storage, SessionsRepo, MessagesRepo, EventsRepo, AuditRepo, ProfilesRepo, VectorMemoryRepo, VariantsRepo } from "@omni/storage"
 import {
   FileTracer,
   SqliteProfileCache,
   probeModelCached,
   adapt,
+  adaptFromPool,
+  poolFromRows,
+  rowFromVariant,
+  addVariant,
+  emptyPool,
+  mutatePrompt,
+  scoreTrace,
+  EVOLUTION_SEED,
   loadSkills,
   loadAgents,
   setFrontmatterParser,
@@ -67,6 +76,8 @@ import {
   VectorMemory,
   type Skill,
   type Agent,
+  type EvolveMode,
+  type VariantPool,
 } from "@omni/improve"
 import { buildMemory, makeRememberTool, recallBlock } from "./memory-runtime.ts"
 import { makeDedupReadFile } from "./read-dedup.ts"
@@ -122,6 +133,18 @@ export interface BootstrapResult {
   readonly profileCache: SqliteProfileCache
   readonly activeProfile: Awaited<ReturnType<typeof probeModelCached>> | null
   readonly activeStrategy: ReturnType<typeof adapt> | null
+  /** Prompt-evolution variant store (model-scoped). */
+  readonly variants: VariantsRepo
+  /** Id of the evolved variant driving this session, or null (static/disabled). */
+  readonly activeVariantId: string | null
+  /** Operating-rules text of the active variant, layered as a per-run prefix. */
+  readonly activeVariantText: string | null
+  /** This session's variant pool for the active model (hydrated at startup). */
+  readonly activePool: VariantPool
+  /** Why the active prompt was chosen, or null when evolution is off. */
+  readonly evolveMode: EvolveMode | null
+  /** Per-model key for the variant pool (the adapter id). */
+  readonly evolveModelId: string
   readonly fileTracer: FileTracer | null
   readonly skills: Map<string, Skill>
   readonly skillsEnabled: ReadonlySet<string>
@@ -181,6 +204,7 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
   const audit = new AuditRepo(storage)
   const profiles = new ProfilesRepo(storage)
   const vectorRepo = new VectorMemoryRepo(storage)
+  const variants = new VariantsRepo(storage)
 
   // ─── Hooks ──────────────────────────────────────────────────────────────
   const hooks = await loadHooks(config)
@@ -295,17 +319,46 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
     log(ansi.dim(`agents: ${[...agentToolMap.keys()].join(", ")}`))
   }
 
-  // ─── Probe + adapt ──────────────────────────────────────────────────────
+  // ─── Probe + adapt (+ evolve loop selection) ──────────────────────────────
   const profileCache = new SqliteProfileCache(profiles)
+  const evolveCfg = config.improve?.evolve
+  const evolveEnabled = evolveCfg?.enabled === true && modelName !== "mock"
+  const evolveModelId = adapter.id
   let activeProfile: BootstrapResult["activeProfile"] = null
   let activeStrategy: BootstrapResult["activeStrategy"] = null
+  let activePool: VariantPool = emptyPool()
+  let activeVariantId: string | null = null
+  let activeVariantText: string | null = null
+  let evolveMode: EvolveMode | null = null
   if (modelName !== "mock") {
     progress(`probing ${modelName}…`)
     try {
       activeProfile = await probeModelCached(adapter, profileCache, {
         maxAgeMs: 24 * 60 * 60 * 1000, // 24h
       })
-      activeStrategy = adapt(activeProfile)
+      if (evolveEnabled && activeProfile) {
+        // Hydrate (and, on first contact, seed) this model's variant pool, then
+        // select a prompt variant by fitness. The variant is an operating-rules
+        // ADDENDUM layered on the environment-aware base prompt — never a swap.
+        activePool = poolFromRows(variants.forModel(evolveModelId))
+        if (activePool.variants.length === 0) {
+          const { variant } = addVariant(emptyPool(), EVOLUTION_SEED)
+          variants.upsert(rowFromVariant(evolveModelId, variant))
+          activePool = poolFromRows(variants.forModel(evolveModelId))
+        }
+        const sel = adaptFromPool(activeProfile, activePool, {
+          minTrials: evolveCfg?.minTrials,
+          explorationRate: evolveCfg?.explorationRate,
+          tournamentK: evolveCfg?.tournamentK,
+        })
+        activeStrategy = sel.strategy
+        activeVariantId = sel.variant?.id ?? null
+        activeVariantText = sel.variant?.text ?? null
+        evolveMode = sel.mode
+        log(ansi.dim(`evolve: ${sel.mode}${activeVariantId ? ` (variant ${activeVariantId.slice(0, 8)})` : ""}, ${activePool.variants.length} in pool`))
+      } else {
+        activeStrategy = adapt(activeProfile)
+      }
     } catch (e) {
       log(ansi.dim(`probe skipped: ${(e as Error).message}`))
     }
@@ -450,6 +503,37 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
   // ─── Cleanup ────────────────────────────────────────────────────────────
   async function cleanup(): Promise<void> {
     sessions.setStatus(engine.sessionId(), "completed")
+
+    // ─── Close the self-improvement loop ─────────────────────────────────────
+    // Score this session's trace (verifier-grounded) and fold it into the
+    // active variant, then occasionally seed a mutated challenger. The DB
+    // events table is authoritative (written by the tracer, independent of
+    // tracesEnabled). Any failure here is non-fatal — never block shutdown.
+    if (evolveEnabled) {
+      try {
+        const evs = events
+          .bySession(engine.sessionId())
+          .map((r) => r.data as EngineEvent)
+        if (evs.length > 0) {
+          const score = scoreTrace(evs)
+          if (activeVariantId) variants.recordTrial(activeVariantId, score)
+          // Seed a mutated challenger from the current best, sometimes.
+          if (Math.random() < (evolveCfg?.mutationRate ?? 0.15)) {
+            const top = variants.ranked(evolveModelId)[0]
+            if (top) {
+              const childText = mutatePrompt(top.text)
+              if (childText !== top.text) {
+                const { variant } = addVariant(emptyPool(), childText, top.id)
+                variants.upsert(rowFromVariant(evolveModelId, variant))
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error(ansi.red(`evolve: recordTrial failed: ${(e as Error).message}`))
+      }
+    }
+
     if (fileTracer) {
       try {
         await fileTracer.flush()
@@ -478,6 +562,12 @@ export async function bootstrap(opts: BootstrapOptions = {}): Promise<BootstrapR
     profileCache,
     activeProfile,
     activeStrategy,
+    variants,
+    activeVariantId,
+    activeVariantText,
+    activePool,
+    evolveMode,
+    evolveModelId,
     fileTracer,
     skills,
     skillsEnabled,

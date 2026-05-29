@@ -155,17 +155,39 @@ describe("ProfilesRepo", () => {
 })
 
 describe("VariantsRepo", () => {
-  test("recordTrial accumulates and ranked is fitness-sorted", () => {
+  test("recordTrial accumulates and ranked is fitness-sorted (per model)", () => {
     const s = mkStore()
     const repo = new VariantsRepo(s)
-    repo.upsert({ id: "a", text: "alpha", trials: 0, success_score: 0, created_at: 1 })
-    repo.upsert({ id: "b", text: "beta", trials: 0, success_score: 0, created_at: 2 })
+    repo.upsert({ id: "a", model_id: "m1", text: "alpha", trials: 0, success_score: 0, created_at: 1 })
+    repo.upsert({ id: "b", model_id: "m1", text: "beta", trials: 0, success_score: 0, created_at: 2 })
     repo.recordTrial("a", 0.9)
     repo.recordTrial("a", 0.9)
     repo.recordTrial("b", 0.2)
-    const r = repo.ranked()
+    const r = repo.ranked("m1")
     expect(r[0]!.id).toBe("a")
     expect(r[1]!.id).toBe("b")
+    expect(repo.get("a")?.trials).toBe(2)
+    expect(repo.get("a")?.success_score).toBeCloseTo(1.8, 6)
+    s.close()
+  })
+
+  test("pools are isolated per model", () => {
+    const s = mkStore()
+    const repo = new VariantsRepo(s)
+    repo.upsert({ id: "a", model_id: "m1", text: "alpha", trials: 1, success_score: 0.5, created_at: 1 })
+    repo.upsert({ id: "z", model_id: "m2", text: "zeta", trials: 1, success_score: 0.5, created_at: 1 })
+    expect(repo.forModel("m1").map((v) => v.id)).toEqual(["a"])
+    expect(repo.forModel("m2").map((v) => v.id)).toEqual(["z"])
+    expect(repo.ranked("m1").length).toBe(1)
+  })
+
+  test("migration 5 added the model_id column", () => {
+    const s = mkStore()
+    expect(s.schemaVersion()).toBeGreaterThanOrEqual(5)
+    const cols = (s.db.query("PRAGMA table_info(prompt_variants)").all() as Array<{ name: string }>).map(
+      (c) => c.name,
+    )
+    expect(cols).toContain("model_id")
     s.close()
   })
 })

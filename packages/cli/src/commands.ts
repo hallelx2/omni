@@ -1,7 +1,7 @@
 import type { Engine } from "@omni/core"
-import type { ModelProfile, AdaptedStrategy, Skill } from "@omni/improve"
+import type { ModelProfile, AdaptedStrategy, Skill, EvolveMode } from "@omni/improve"
 import type { MCPManager } from "@omni/tools"
-import type { SessionsRepo, MessagesRepo } from "@omni/storage"
+import type { SessionsRepo, MessagesRepo, VariantsRepo } from "@omni/storage"
 import { ansi } from "./ansi.ts"
 import {
   loadUserCommands,
@@ -25,6 +25,16 @@ export interface CommandContext {
   readonly onContinueSession?: (sessionId: string) => boolean
   readonly mode?: RunMode
   readonly onModeChange?: (mode: RunMode, source?: "manual" | "agent") => void
+  /** Prompt-evolution pool store (model-scoped), for /evolve. */
+  readonly variantsRepo?: VariantsRepo
+  /** Per-model key for the evolution pool (the adapter id). */
+  readonly evolveModelId?: string
+  /** Id of the variant driving this session, marked in /evolve. */
+  readonly activeVariantId?: string | null
+  /** Why the active prompt was chosen this session. */
+  readonly evolveMode?: EvolveMode | null
+  /** Whether the evolution loop is enabled (config.improve.evolve.enabled). */
+  readonly evolveEnabled?: boolean
 }
 
 export interface SlashCommand {
@@ -253,6 +263,58 @@ const COMMANDS: readonly SlashCommand[] = [
       lines.push(``)
       lines.push(`${ansi.bold("Rationale")}`)
       for (const r of s.rationale) lines.push(`  ${ansi.dim("·")} ${r}`)
+      lines.push(``)
+      const src =
+        ctx.evolveEnabled && ctx.activeVariantId
+          ? ansi.green(`evolved (variant ${ctx.activeVariantId.slice(0, 8)}, ${ctx.evolveMode ?? "?"})`)
+          : ctx.evolveEnabled
+            ? ansi.dim("static (cold pool — gathering trials)")
+            : ansi.dim("static (evolution disabled)")
+      lines.push(`  prompt source:        ${src}`)
+      return { kind: "message", text: lines.join("\n") }
+    },
+  },
+  {
+    name: "evolve",
+    description: "Show the prompt-evolution pool for the current model (fitness, trials, lineage)",
+    async run(_args, ctx) {
+      if (!ctx.evolveEnabled) {
+        return {
+          kind: "message",
+          text: ansi.dim(
+            "(evolution disabled — set improve.evolve.enabled = true in ~/.omni/config.json)",
+          ),
+        }
+      }
+      if (!ctx.variantsRepo || !ctx.evolveModelId) {
+        return { kind: "message", text: ansi.dim("(no pool — running on mock adapter)") }
+      }
+      const rows = ctx.variantsRepo.ranked(ctx.evolveModelId)
+      if (rows.length === 0) {
+        return { kind: "message", text: ansi.dim("(pool is empty — it seeds on first real session)") }
+      }
+      const fit = (r: { trials: number; success_score: number }) =>
+        r.trials === 0 ? 0 : r.success_score / r.trials
+      const lines: string[] = []
+      lines.push(`${ansi.bold("Evolution pool")} ${ansi.dim(`(${ctx.evolveModelId})`)}  ${ansi.green("enabled")}`)
+      lines.push(ansi.dim("   fitness  trials  id        parent    first line"))
+      for (const r of rows) {
+        const active = r.id === ctx.activeVariantId ? ansi.green("→") : " "
+        const firstLine = (r.text.split("\n").find((l) => l.trim().length > 0) ?? "").slice(0, 48)
+        const parent = r.parent ? r.parent.slice(0, 8) : ansi.dim("—".padEnd(8))
+        lines.push(
+          ` ${active} ${fit(r).toFixed(2).padStart(7)}  ${String(r.trials).padStart(5)}   ${r.id.slice(0, 8)}  ${parent}  ${ansi.dim(firstLine)}`,
+        )
+      }
+      const best = rows[0]!
+      lines.push(
+        ansi.dim(
+          `  best fitness ${fit(best).toFixed(2)} over ${best.trials} trial(s) · ${rows.length} variant(s)`,
+        ),
+      )
+      if (ctx.activeVariantId) {
+        lines.push(ansi.dim(`  active this session: ${ctx.activeVariantId.slice(0, 8)} (${ctx.evolveMode ?? "?"})`))
+      }
       return { kind: "message", text: lines.join("\n") }
     },
   },

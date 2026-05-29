@@ -52,7 +52,7 @@ describe("scoreTrace", () => {
     expect(s).toBeGreaterThanOrEqual(0.8)
   })
 
-  test("fatal error → score 0", () => {
+  test("fatal error → score capped near zero", () => {
     const events: EngineEvent[] = [
       {
         type: "engine.error",
@@ -69,7 +69,9 @@ describe("scoreTrace", () => {
         durationMs: 1,
       },
     ]
-    expect(scoreTrace(events)).toBe(0)
+    // The verifier-grounded formula caps (rather than zeroes) a fatal run so a
+    // partially-verified crash can still rank above a fully-broken one.
+    expect(scoreTrace(events)).toBeLessThanOrEqual(0.1)
   })
 
   test("loop detected → reduced score", () => {
@@ -91,5 +93,44 @@ describe("scoreTrace", () => {
       },
     ]
     expect(scoreTrace(happy)).toBeGreaterThan(scoreTrace(looped))
+  })
+
+  const vr = (status: "pass" | "fail" | "skip"): EngineEvent => ({
+    type: "verifier.result",
+    call: { id: "1", name: "edit", args: {} },
+    verifier: "tests",
+    status,
+    durationMs: 1,
+  })
+  const doneOk: EngineEvent = {
+    type: "engine.done",
+    reason: "model_done",
+    usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, callCount: 0 },
+    durationMs: 1,
+  }
+
+  test("verifier passes dominate even a clean-finish trace", () => {
+    const passed = scoreTrace([doneOk, vr("pass"), vr("pass"), vr("pass")])
+    const failed = scoreTrace([doneOk, vr("fail"), vr("fail"), vr("fail")])
+    expect(passed).toBeGreaterThanOrEqual(0.9)
+    expect(failed).toBeLessThanOrEqual(0.25)
+    expect(passed).toBeGreaterThan(failed)
+  })
+
+  test("mixed pass/fail lands mid-range", () => {
+    const s = scoreTrace([doneOk, vr("pass"), vr("pass"), vr("fail"), vr("fail")])
+    expect(s).toBeGreaterThanOrEqual(0.45)
+    expect(s).toBeLessThanOrEqual(0.65)
+  })
+
+  test("skips are ignored — 2 pass + 5 skip == 2 pass", () => {
+    const withSkips = scoreTrace([doneOk, vr("pass"), vr("pass"), vr("skip"), vr("skip"), vr("skip"), vr("skip"), vr("skip")])
+    const without = scoreTrace([doneOk, vr("pass"), vr("pass")])
+    expect(withSkips).toBeCloseTo(without, 6)
+  })
+
+  test("is pure — same events twice yields the same score", () => {
+    const evs = [doneOk, vr("pass"), vr("fail")]
+    expect(scoreTrace(evs)).toBe(scoreTrace(evs))
   })
 })

@@ -263,6 +263,32 @@ export const ConfigSchema = z.object({
         .optional(),
     })
     .optional(),
+
+  /**
+   * Self-improvement loop: evolve the system prompt across sessions using
+   * verifier-grounded trace scores. Off by default — opt-in per user/workspace.
+   * When off, the static `adapt()` strategy is used unchanged.
+   */
+  improve: z
+    .object({
+      evolve: z
+        .object({
+          /** Master switch. Default false. */
+          enabled: z.boolean().optional(),
+          /** Minimum trials before a variant's fitness is trusted for exploitation. Default 3. */
+          minTrials: z.number().int().nonnegative().optional(),
+          /** Epsilon: probability of trying a challenger over the best variant. Default 0.1. */
+          explorationRate: z.number().min(0).max(1).optional(),
+          /** Probability of seeding a mutated challenger at session end. Default 0.15. */
+          mutationRate: z.number().min(0).max(1).optional(),
+          /** Tournament size for exploration picks. Default 3. */
+          tournamentK: z.number().int().positive().optional(),
+          /** Cap on stored variants per model (oldest low-fitness pruned). Default 50. */
+          maxVariantsPerModel: z.number().int().positive().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
 })
 
 export type Config = z.infer<typeof ConfigSchema>

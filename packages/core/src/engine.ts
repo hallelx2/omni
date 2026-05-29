@@ -287,8 +287,9 @@ export class Engine {
         // Bounded retry loop within a single iteration.
         let turn: TurnResult
         let retries = 0
+        const budgetNote = budgetReminder(i, this._maxIterations, unlimited)
         retryLoop: while (true) {
-          turn = yield* this._runModelTurn(toolSchemas, signal)
+          turn = yield* this._runModelTurn(toolSchemas, signal, budgetNote)
           if (!turn.error) break retryLoop
           if (turn.error.category === "aborted") {
             reason = "aborted"
@@ -390,6 +391,7 @@ export class Engine {
   private async *_runModelTurn(
     toolSchemas: readonly ToolSchema[],
     signal: AbortSignal,
+    ephemeralSystem?: string,
   ): AsyncGenerator<EngineEvent, TurnResult, void> {
     yield { type: "model.start", modelId: this.config.model.id }
 
@@ -406,8 +408,14 @@ export class Engine {
     }
 
     const hookedMessages = await runPreModel(this._hooks, fit.messages)
+    // An ephemeral, NON-persisted system note (e.g. the iteration-budget
+    // reminder) is appended last so it's the most salient context for this
+    // turn only — it never enters _ctx, so it doesn't accrete in history.
+    const turnMessages = ephemeralSystem
+      ? [...hookedMessages, makeMessage("system", ephemeralSystem)]
+      : hookedMessages
     const params: CompleteParams = {
-      messages: hookedMessages,
+      messages: turnMessages,
       tools: toolSchemas,
       signal,
     }
@@ -686,6 +694,38 @@ export class Engine {
   private _touch(): void {
     this._updatedAt = Date.now()
   }
+}
+
+// ─── Iteration-budget reminder ──────────────────────────────────────────────
+
+/**
+ * An ephemeral system note injected into a model turn so the model is AWARE of
+ * its iteration budget — real runs were hitting the ceiling mid-task with no
+ * warning, and unbounded runs sometimes thrashed on verification.
+ *
+ *   bounded   → warn in the final ~20% of the budget to land work cleanly.
+ *   unbounded → a periodic anti-thrash nudge every 12 iterations.
+ *
+ * Returns undefined when no reminder is warranted (the common case).
+ */
+function budgetReminder(
+  iteration: number,
+  maxIterations: number,
+  unlimited: boolean,
+): string | undefined {
+  if (unlimited) {
+    if (iteration > 0 && iteration % 12 === 0) {
+      return `[harness] You are on iteration ${iteration} with no fixed cap. If you are repeating similar commands without new progress, stop: run ONE definitive check, or report the blocker and the next step to the user — don't keep trying variants.`
+    }
+    return undefined
+  }
+  const remaining = maxIterations - iteration
+  const threshold = Math.max(3, Math.ceil(maxIterations * 0.2))
+  if (remaining <= threshold) {
+    const left = remaining + 1 // including the current turn
+    return `[harness] Iteration ${iteration} of ${maxIterations} — about ${left} turn(s) left. If you cannot fully finish, bring the code to a consistent state now and report what is done, what remains, and the single next command. Do not start work you cannot complete in the remaining turns.`
+  }
+  return undefined
 }
 
 // ─── Message constructors ─────────────────────────────────────────────────
