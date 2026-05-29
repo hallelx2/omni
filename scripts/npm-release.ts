@@ -40,6 +40,20 @@ if (!version || !/^\d+\.\d+\.\d+/.test(version)) {
   process.exit(2)
 }
 
+// Fail fast on a real publish if there's no npm auth — otherwise we build and
+// stage everything only to die mid-publish with a cryptic ENEEDAUTH.
+if (!packOnly && !dryRun) {
+  const token = process.env.NODE_AUTH_TOKEN || process.env.NPM_TOKEN
+  if (!token || !token.trim()) {
+    console.error(
+      "✖ No npm auth token in the environment (NODE_AUTH_TOKEN / NPM_TOKEN).\n" +
+        "  Set a valid npm automation token with publish rights for omni-harness*,\n" +
+        "  then retry. In CI this comes from the NPM_TOKEN repo secret.",
+    )
+    process.exit(2)
+  }
+}
+
 // platform key → { binary built by build:all, npm os, npm cpu, installed bin name }
 const TARGETS = [
   { key: "windows-x64",  built: "omni-windows-x64.exe", os: "win32",  cpu: "x64",   bin: "omni.exe" },
