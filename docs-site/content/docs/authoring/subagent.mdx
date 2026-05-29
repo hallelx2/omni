@@ -1,0 +1,76 @@
+---
+title: Authoring a subagent
+description: Define a sandboxed specialist with an AGENT.md — model, tools, enforced permission regexes, history policy, and loaded skills.
+---
+
+A subagent is defined by a single `AGENT.md`: a frontmatter block plus a system
+prompt. Drop it in `~/.omni/agents/<name>/AGENT.md` (user) or
+`<workspace>/.omni/agents/<name>/AGENT.md` (per-project). Workspace defs override
+user defs, which override the shipped fleet.
+
+## A complete example
+
+```md
+---
+{
+  "name": "migrations",
+  "description": "Writes and runs database migrations. SQL + the migration CLI only.",
+  "model": "anthropic:claude-sonnet-4-5",
+  "tools": ["read_file", "glob", "grep", "edit", "write_file", "bash"],
+  "permissionDefault": "deny",
+  "permissions": {
+    "bash": { "allow": ["^(npm|bun)\\s+run\\s+(migrate|db:.*)\\b", "^psql\\b"] },
+    "write_file": {
+      "allow": ["(^|/)migrations/"],
+      "deny": ["(^|/)(\\.env|\\.git/|node_modules/)"]
+    }
+  },
+  "maxIterations": 25,
+  "history": "isolate",
+  "skills": ["senior-data-engineer"],
+  "skillResources": "summary",
+  "languages": ["sql", "typescript"],
+  "domains": ["database", "data", "migration"]
+}
+---
+You are the **migrations** subagent. You author and run database migrations and
+nothing else.
+
+## Operating rules
+- Write only under `migrations/`. Never touch app source, `.env`, or `.git/`.
+- Via bash you may ONLY run the migration scripts and `psql`. No arbitrary shell.
+- Always make migrations reversible; include an `up` and a `down`.
+
+## Reporting
+Finish with the files you wrote (as a path list), the migration result, and any
+follow-ups. Terse, evidence-first.
+```
+
+## Field reference
+
+See the [Subagents](/docs/subagents#fields) page for the full table. The fields
+that matter most when authoring:
+
+- **`tools`** — the allowlist. The subagent can never call a tool outside this
+  set, even if its prompt asks for one.
+- **`permissions`** + **`permissionDefault`** — per-tool `allow`/`deny` regexes,
+  with `deny` evaluated first and a default decision when nothing matches. These
+  are **enforced by the engine**, independent of the prompt.
+- **`history`** — `"isolate"` for a clean child context (recommended for
+  specialists), `"keep"` to inherit the parent transcript, or `{ "keepLast": N }`.
+- **`skills`** + **`skillResources`** — load skill guidance into the prompt
+  **without** widening the tool allowlist. See [Skills](/docs/skills).
+- **`languages`** + **`domains`** — hints the auto-[router](/docs/subagents#routing)
+  uses to pick this agent for a task.
+
+<Callout type="warn" title="Prompt ≠ permission">
+  Write the operating rules in the prose so the model *intends* the right thing,
+  but rely on `permissions` to *enforce* it. The two layers are independent —
+  the gate denies a disallowed call no matter what the prompt says.
+</Callout>
+
+## Using it
+
+The main agent calls your subagent as a tool, or fans several out with
+`dispatch_agents`. With matching `languages`/`domains`, `routeAgents` will surface
+it automatically for relevant tasks.

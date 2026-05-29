@@ -1,0 +1,90 @@
+---
+title: Tools
+description: The hands — bash, file I/O, structured edits, search, web fetch, and an MCP client. Cross-platform, schema-validated, path-safe.
+---
+
+Tools are the agent's **hands**. Each one implements a small contract; the
+engine validates arguments against the tool's Zod schema before invoking it, so
+a malformed call surfaces as a correctable `tool.invalid` event rather than a
+crash.
+
+```ts
+interface Tool<TArgs, TResult> {
+  readonly name: string
+  readonly description: string
+  readonly permission: "auto" | "ask" | "deny"
+  readonly schema: z.ZodType<TArgs>
+  execute(args: TArgs, ctx: ToolContext): Promise<TResult>
+}
+```
+
+## Built-in tools
+
+| Tool | What it does |
+|---|---|
+| `bash` | Runs a shell command. Cross-platform — **pwsh** on Windows, **bash**/**gitbash** elsewhere — ANSI-stripped, output-capped. |
+| `read_file` | Reads a file with size limits and line slicing. |
+| `write_file` | Writes a file with size guards. |
+| `edit` | Single find/replace, ambiguity-safe (refuses non-unique matches). |
+| `multi_edit` | Multiple edits applied **atomically** to one file. |
+| `apply_patch` | Applies a unified-diff-style patch across files. |
+| `glob` | Fast file matching, mtime-sorted. |
+| `grep` | Content search, accelerated by ripgrep when present. |
+| `web_fetch` | Fetches a URL and converts HTML to markdown (turndown). |
+
+## Cross-platform shell
+
+The `bash` tool detects the host shell and picks the right interpreter
+automatically — PowerShell on Windows, bash or git-bash elsewhere. Output is
+ANSI-stripped and capped so a runaway command can't flood the model's context.
+Destructive commands are **denied by default** — see
+[Permissions](/docs/permissions).
+
+## Structured edits over rewrites
+
+Prefer `edit` / `multi_edit` / `apply_patch` over rewriting whole files with
+`write_file`:
+
+- `edit` refuses ambiguous matches, so the model can't silently change the wrong
+  occurrence.
+- `multi_edit` applies a batch of edits atomically — either all succeed or none
+  do.
+- `apply_patch` lands a reviewable diff.
+
+This keeps changes small, auditable, and far less likely to clobber unrelated
+code — which matters most with weaker models.
+
+## MCP client
+
+The `MCPClient` wraps any [Model Context Protocol](https://modelcontextprotocol.io)
+server — stdio or HTTP — so its tools register **alongside** the built-ins and
+are indistinguishable to the model. Point Omni at an MCP server and its tools
+become first-class hands, subject to the same validation and permission gating.
+
+## Tool results in context
+
+Results larger than the cap are clipped to a head/tail preview with an elision
+marker (`chunkToolResult`) before being appended to history — a large result
+never drowns a small model's window.
+
+## Authoring your own
+
+A tool is just an object satisfying `Tool<TArgs, TResult>`:
+
+```ts
+import { z } from "zod"
+import type { Tool, ToolContext } from "@omni/core"
+
+export const shout: Tool<{ text: string }, { result: string }> = {
+  name: "shout",
+  description: "Return the input in upper case.",
+  permission: "auto",
+  schema: z.object({ text: z.string() }),
+  async execute(args, ctx: ToolContext) {
+    return { result: args.text.toUpperCase() }
+  },
+}
+```
+
+See [Authoring a tool](/docs/authoring/tool) for progress events, abort
+handling, and anti-patterns.

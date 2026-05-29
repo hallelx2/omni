@@ -1,0 +1,43 @@
+---
+title: Slash commands
+description: The interactive CLI command reference — sessions, modes, skills, and the self-improvement inspectors.
+---
+
+Inside an interactive Omni session (`omni` or `omni --plain`), commands starting
+with `/` control the harness.
+
+## Reference
+
+| Command | What it does |
+|---|---|
+| `/help` | List all commands. |
+| `/paths` | Show the resolved `~/.omni/` paths for this run. |
+| `/usage` | Cumulative token usage and cost (cache-discounted where reported). |
+| `/session` | The current session ID. |
+| `/model` | The active model. |
+| `/mode` | Show or switch the run mode — `/mode plan \| auto \| build`. |
+| `/plan` | Switch to **plan** mode (read-only + planner). |
+| `/auto` | Switch to **auto** mode (full tools, prompts auto-allowed). |
+| `/build` | Switch to **build** mode (full tools + critic). |
+| `/skill` | Pin or unpin a skill — `/skill <name>` / `/skill off`. |
+| `/skills` | List discovered skills across all roots. |
+| `/profile` | The cached `ModelProfile` for the active model (probe results). |
+| `/evolve` | The prompt-variant pool — trials, fitness, and which variant this run used. |
+| `/history` | A compact view of the conversation so far. |
+| `/quit` | Exit (also `/exit`). |
+
+## The self-improvement inspectors
+
+`/profile` and `/evolve` are the windows into the
+[self-improvement loop](/docs/self-improvement):
+
+- **`/profile`** shows what `probeModel` learned about the current model — native
+  tool calls, instruction-following, verbosity, latency.
+- **`/evolve`** shows the per-model variant pool: each variant's trial count and
+  verifier-grounded fitness, and whether this run chose **exploit**, **explore**,
+  or **fallback**.
+
+<Callout>
+  Slash-argument parsing is currently space-split (no quoted strings), so a
+  command argument shouldn't contain spaces.
+</Callout>

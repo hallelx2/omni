@@ -1,0 +1,80 @@
+---
+title: Authoring an adapter
+description: Plug in a new model provider — the ModelAdapter contract, the AI SDK 6 translation helpers, and provider gotchas.
+---
+
+An adapter teaches Omni to talk to a model provider. If the provider is
+OpenAI-compatible, you may not need a new adapter at all — point the
+`OpenAICompatibleAdapter` at its base URL. For anything else, implement the
+contract; it's roughly 80 lines.
+
+## The contract
+
+```ts
+interface ModelAdapter {
+  readonly id: string
+  readonly name: string
+  readonly capabilities: ModelCapabilities
+  complete(params: CompleteParams): AsyncIterable<ModelEvent>
+}
+```
+
+`complete` is an **async generator** of `ModelEvent` — it does not return a
+buffered response. That's what gives Omni true streaming.
+
+## The shape of an adapter
+
+Every adapter follows the same three steps, using the shared helpers in
+`packages/adapters/src/util/*`:
+
+```ts
+async function* complete(params: CompleteParams): AsyncIterable<ModelEvent> {
+  // 1. Translate Omni's normalized shape → AI SDK 6.
+  const messages = messagesToAISDK(params.messages)
+  const tools = toolsToAISDK(params.tools)
+
+  // 2. Call the provider through the AI SDK.
+  const stream = streamText({ model, messages, tools, abortSignal: params.signal })
+
+  // 3. Re-translate the AI SDK stream → Omni ModelEvent.
+  yield* translateStream(stream)
+}
+```
+
+Wrap the generator in `withCost` to attach cost deltas when
+`capabilities` declares per-1k rates.
+
+## `ModelCapabilities`
+
+Declare what the model can do and what it costs:
+
+```ts
+const capabilities: ModelCapabilities = {
+  nativeToolCalls: true,
+  streaming: true,
+  reasoning: false,
+  inputCostPer1k: 0.0,
+  outputCostPer1k: 0.0,
+}
+```
+
+The engine uses these — e.g. to decide whether to enable ReAct fallback and to
+compute cost in `engine.usage`.
+
+## Provider gotchas
+
+- **Reasoning content.** Some providers (MiMo) stream a separate
+  `reasoning_content` channel that must be **round-tripped** back on the next
+  request or the model loses its train of thought. The MiMo adapter handles this
+  — study it before writing a reasoning-capable adapter.
+- **Tool-call argument streaming.** Providers differ in how they chunk tool-call
+  arguments; `translateStream` normalizes this into
+  `model.tool_call_args_delta` → `model.tool_call_done`.
+- **Abort.** Always thread `params.signal` into the provider call so
+  [abort propagation](/docs/architecture) reaches the network request.
+
+## Selecting it
+
+Once registered, select your adapter via `OMNI_ADAPTER`, an auto-selecting env
+key, or the `adapter` field in [config.json](/docs/configuration). See the
+[Provider matrix](/docs/providers) for the built-ins.

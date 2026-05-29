@@ -1,0 +1,64 @@
+---
+title: Third brain
+description: A Planner that decomposes, a Critic that reviews, and a VectorMemory that recalls — the cognitive layer Omni wraps around any model.
+---
+
+The **third brain** is the cognitive layer Omni wraps around the executor model:
+a Planner, a Critic, and a Memory. Each can run on a **stronger model** than the
+executor — plan on Claude, execute on a local model, for instance.
+
+## Planner — decompose
+
+The **Planner** decomposes a user task into steps *before* the executor model
+sees it. By front-loading structure, a weaker executor spends its turns
+executing a plan rather than inventing one mid-stream. Active first in
+[**plan** mode](/docs/modes); usable as a role elsewhere.
+
+## Critic — review
+
+The **Critic** reviews assistant turns and tool results for plausibility and
+correctness. It returns a structured verdict — `{ verdict, score, issues }` —
+and a `shouldRetry()` decision. Critically, its feedback is injected back **into
+the tool result** the model sees next turn, so correction happens in-band. The
+Critic is active in [**build** mode](/docs/modes).
+
+## Memory — recall
+
+**Memory** persists facts, preferences, and skills across sessions. Two backends:
+
+- A simple keyword store for fast linear-scan recall.
+- **`VectorMemory`** — embedding-backed semantic recall, **opt-in** via
+  `config.memory`.
+
+When enabled, relevant prior knowledge is recalled and surfaced to the model at
+the start of a turn, so the agent benefits from what earlier sessions learned.
+
+```json
+{
+  "memory": {
+    "enabled": true,
+    "backend": "vector"
+  }
+}
+```
+
+<Callout>
+  Memory is one of three self-improvement signals. The
+  [self-improvement loop](/docs/self-improvement) adds the other two: adapting
+  prompts to the model, and evolving a per-model prompt-variant pool from
+  verifier-grounded trace scores.
+</Callout>
+
+## Per-role models
+
+The planner, critic, and each subagent may run on a different model than the
+main agent, each defaulting to the main model:
+
+```json
+{
+  "agents": {
+    "planner": { "model": "anthropic:claude-sonnet-4-5" },
+    "critic": { "enabled": true, "autoRetry": false }
+  }
+}
+```

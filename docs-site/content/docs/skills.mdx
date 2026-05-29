@@ -1,0 +1,67 @@
+---
+title: Skills
+description: SKILL.md directories loaded from multiple roots. A subagent's skills frontmatter loads guidance into its prompt without widening its tool allowlist.
+---
+
+A **skill** is a `SKILL.md` directory — a packaged unit of domain guidance the
+agent can carry into a task. Skills change *how* the agent works (its knowledge
+and procedure); they do **not** grant new tools.
+
+## Search roots & precedence
+
+Skills are loaded from several roots, **lowest precedence first**. Later roots
+override earlier ones on a name collision:
+
+1. `~/.claude/skills` — skills installed for Claude Code (read-only consumers).
+2. `$OMNI_SKILL_ROOTS` entries — extra roots, OS-path-delimited.
+3. `~/.omni/skills` — the user's authored skills.
+4. `<workspace>/.omni/skills` — per-project skills.
+
+So your workspace and `~/.omni/skills` win over installed Claude-Code skills.
+
+### Environment overrides
+
+| Variable | Effect |
+|---|---|
+| `OMNI_SKILL_ROOTS` | Extra skill roots, OS-path-delimiter separated (`:` on Unix, `;` on Windows). |
+| `OMNI_CLAUDE_SKILLS_DIR` | Override (or, set empty, disable) the `~/.claude/skills` root. |
+
+```bash
+# Add a shared team skills directory; disable the Claude-Code root.
+OMNI_SKILL_ROOTS=/team/skills OMNI_CLAUDE_SKILLS_DIR= omni
+```
+
+## Loading skills into a subagent
+
+A subagent's [`skills:` frontmatter](/docs/subagents) loads the named skills'
+guidance directly into its system prompt — capped, and governed by
+`skillResources` (`"summary"` | `"full"` | `"none"`).
+
+<Callout type="warn">
+  Loading a skill **does not widen the tool allowlist.** A skill gives the agent
+  knowledge and procedure, never new reach. Tools stay governed entirely by the
+  agent's `tools` + `permissions`.
+</Callout>
+
+For example, `frontend-engineer` auto-loads:
+
+```json
+"skills": ["frontend-design", "aceternity-ui", "web-design-guidelines"],
+"skillResources": "summary"
+```
+
+so it inherits design taste, an animated-component library's integration
+guidance, and an accessibility checklist — while still being confined to the
+frontend toolchain.
+
+## Pinning a skill in the CLI
+
+In an interactive session you can pin a skill for the main agent:
+
+```text
+/skill <name>      pin a skill
+/skill off         unpin
+/skills            list discovered skills
+```
+
+See [Authoring a SKILL.md skill](/docs/authoring/skill) to write your own.

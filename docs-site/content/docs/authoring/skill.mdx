@@ -1,0 +1,64 @@
+---
+title: Authoring a skill
+description: Package domain guidance as a SKILL.md directory — discoverable, loadable into subagents, and pinnable in the CLI.
+---
+
+A skill is a directory containing a `SKILL.md`. It packages domain guidance —
+how to approach a class of work — that the agent can carry into a task. A skill
+changes *how* the agent works; it never grants new tools.
+
+## Layout
+
+```text
+my-skill/
+├── SKILL.md          # frontmatter + the guidance body
+└── resources/        # optional supporting files referenced by the body
+```
+
+Place the directory in any [skill root](/docs/skills): `~/.omni/skills/`,
+`<workspace>/.omni/skills/`, a path in `$OMNI_SKILL_ROOTS`, or `~/.claude/skills/`.
+
+## SKILL.md
+
+```md
+---
+name: api-design-guidelines
+description: How to design clean, versioned, well-documented HTTP APIs. Use when building or reviewing REST/RPC endpoints.
+---
+
+# API design guidelines
+
+## Principles
+- Resource-oriented URLs; verbs live in the method, not the path.
+- Version at the edge (`/v1/...`); never break a published contract.
+- Return structured errors with a stable `code` and a human `message`.
+
+## Checklist before you ship
+- [ ] Every endpoint documented with request/response examples.
+- [ ] Pagination, filtering, and sorting are consistent across collections.
+- [ ] Idempotency keys on every unsafe mutating endpoint.
+```
+
+### Frontmatter
+
+| Field | Meaning |
+|---|---|
+| `name` | Unique identifier. Workspace skills override same-named ones from lower-precedence roots. |
+| `description` | What the skill is and **when to use it** — read by the agent and by `/skills`. |
+
+The body is free-form Markdown: principles, procedures, checklists, examples.
+
+## How it gets used
+
+- **In a subagent** — list it in the `skills:` frontmatter of an
+  [AGENT.md](/docs/authoring/subagent). The body is inlined into that agent's
+  system prompt, capped by `skillResources` (`"summary"` | `"full"` | `"none"`)
+  — **without widening the agent's tool allowlist.**
+- **In the CLI** — pin it for the main agent with `/skill <name>`, list all with
+  `/skills`, unpin with `/skill off`.
+
+<Callout>
+  Write the `description` for *triggering*. The agent decides whether a skill is
+  relevant from this one line, so state the situation it applies to as
+  concretely as the guidance itself.
+</Callout>

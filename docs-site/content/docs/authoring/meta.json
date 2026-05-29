@@ -1,0 +1,4 @@
+{
+  "title": "Authoring guides",
+  "pages": ["index", "tool", "adapter", "subagent", "skill"]
+}

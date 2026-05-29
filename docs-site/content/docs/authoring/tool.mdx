@@ -1,0 +1,91 @@
+---
+title: Authoring a tool
+description: Write a tool the model can call — the Tool contract, schemas, the ToolContext, progress events, and anti-patterns.
+---
+
+A tool is a callable side-effect the model can invoke during a run. It declares
+a name, description, argument schema, and permission posture, and implements
+`execute(args, ctx)`.
+
+## Minimum example
+
+```ts
+import { z } from "zod"
+import type { Tool, ToolContext } from "@omni/core"
+
+const ShoutArgs = z.object({
+  text: z.string().min(1).describe("Text to convert to upper case."),
+})
+
+export const shout: Tool<z.infer<typeof ShoutArgs>, { result: string }> = {
+  name: "shout",
+  description: "Return the input in upper case.",
+  permission: "auto",
+  schema: ShoutArgs,
+  async execute(args, ctx: ToolContext) {
+    return { result: args.text.toUpperCase() }
+  },
+}
+```
+
+Register it with the engine:
+
+```ts
+new Engine({ model, tools: [shout, bash, readFile] })
+```
+
+## The contract
+
+```ts
+interface Tool<TArgs, TResult> {
+  readonly name: string                 // model-facing identifier
+  readonly description: string          // model-facing prose
+  readonly permission: "auto" | "ask" | "deny"
+  readonly schema: z.ZodType<TArgs>     // validated before execute()
+  execute(args: TArgs, ctx: ToolContext): Promise<TResult>
+}
+```
+
+### `name`
+Lowercase, `snake_case`, unique within the registered set. The model emits this
+string when proposing a call.
+
+### `description`
+A single concrete sentence the model reads to decide whether to call the tool —
+"Read a text file" beats "Read things." Mention the result shape when it isn't
+obvious from the schema.
+
+### `permission`
+| Value | Meaning |
+|---|---|
+| `auto` | Always allowed. Use for side-effect-free reads (`glob`, `read_file`, `grep`). |
+| `ask` | Consults the configured permission gate. Use for anything that writes, executes, or hits the network. |
+| `deny` | Always rejected — keeps the tool *visible* to the model without making it callable this session. |
+
+### `schema`
+A Zod schema for the args object. The engine validates raw model output against
+it **before** calling `execute`. Always `.describe(...)` each field — the
+description is included in the JSON Schema the model sees, which materially helps
+small models pass the right args. A validation failure becomes a `tool.invalid`
+event the model can correct, never a crash.
+
+## The `ToolContext`
+
+`execute` receives a `ctx` with at least:
+
+- `ctx.signal` — an `AbortSignal`. Long-running tools **must** honor it so
+  [abort propagation](/docs/architecture) works; pass it to `fetch`, child
+  processes, etc.
+- a way to emit `tool.progress` events for long operations, so surfaces can show
+  incremental status.
+
+## Anti-patterns
+
+- **Don't throw for expected failures.** Return a structured result describing
+  the failure so the model can react — reserve throwing for truly exceptional
+  states.
+- **Don't ignore `ctx.signal`.** A tool that can't be aborted breaks the
+  engine's cancellation guarantee.
+- **Don't return unbounded output.** Large results are clipped by
+  `chunkToolResult`, but cap your own output where you can.
+- **Don't widen permission to `auto` for anything that writes or executes.**

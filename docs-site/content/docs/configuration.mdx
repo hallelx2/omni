@@ -1,0 +1,113 @@
+---
+title: Configuration reference
+description: The ~/.omni/ directory, the config.json schema, value precedence, and environment overrides.
+---
+
+Omni keeps all per-user state under `~/.omni/`.
+
+```text
+~/.omni/
+├── config.json     # adapter, model, provider keys, modes, permissions, improve…
+├── .env            # provider API keys (MIMO_API_KEY, ANTHROPIC_API_KEY, …)
+├── db.sqlite       # sessions, messages, events, audit, profiles, variants
+├── traces/         # one JSONL trace file per session run
+├── agents/         # custom subagent defs (AGENT.md) — override the shipped fleet
+├── skills/         # authored skills (SKILL.md dirs)
+├── memory.json     # long-term memory entries
+└── settings.json   # surface-specific settings (theme, etc.)
+```
+
+The `/paths` command prints exactly which paths resolved for the current run.
+
+## Precedence
+
+Every value resolves in this order, **highest first**:
+
+```text
+explicit argument  >  environment variable  >  workspace config  >  user config  >  built-in default
+```
+
+## Environment overrides
+
+Every root path is env-overridable:
+
+| Variable | Overrides |
+|---|---|
+| `OMNI_HOME` | the `~/.omni` root |
+| `OMNI_CONFIG` | `config.json` |
+| `OMNI_DB` | `db.sqlite` |
+| `OMNI_TRACES` | `traces/` |
+| `OMNI_MEMORY` | `memory.json` |
+
+Plus skill roots — `OMNI_SKILL_ROOTS` and `OMNI_CLAUDE_SKILLS_DIR` (see
+[Skills](/docs/skills)) — and `OMNI_ADAPTER` to force a provider.
+
+## A full `config.json`
+
+```json
+{
+  "adapter": "mimo",
+  "model": "mimo-v2.5-pro",
+  "maxIterations": 12,
+  "enableReActFallback": true,
+
+  "providers": {
+    "mimo": {
+      "apiKey": "tp-...",
+      "baseURL": "https://token-plan-sgp.xiaomimimo.com/v1"
+    },
+    "anthropic": { "apiKey": "sk-ant-..." }
+  },
+
+  "modes": { "default": "build" },
+
+  "permissions": {
+    "mode": "ask",
+    "denyDestructive": true,
+    "restrictToWorkspace": false,
+    "autoAllow": ["^git (status|diff|log)\\b"],
+    "rules": [{ "tool": "bash", "deny": ["^rm\\b"] }]
+  },
+
+  "agents": {
+    "planner": { "model": "anthropic:claude-sonnet-4-5" },
+    "critic": { "enabled": true, "autoRetry": false }
+  },
+
+  "memory": { "enabled": true, "backend": "vector" },
+
+  "context": { "strategy": "summarize", "maxTokens": 16000 },
+
+  "improve": {
+    "evolve": {
+      "enabled": false,
+      "minTrials": 3,
+      "explorationRate": 0.1,
+      "mutationRate": 0.15,
+      "tournamentK": 3,
+      "maxVariantsPerModel": 50
+    }
+  },
+
+  "ui": { "theme": "dark", "showThinking": true },
+  "storage": { "tracesEnabled": true }
+}
+```
+
+## Section guide
+
+| Block | Covered in |
+|---|---|
+| `adapter`, `model`, `providers` | [Providers](/docs/providers) |
+| `modes` | [Modes](/docs/modes) |
+| `permissions` | [Permissions](/docs/permissions) |
+| `agents` (planner / critic / subagents) | [Third brain](/docs/third-brain), [Subagents](/docs/subagents) |
+| `memory` | [Third brain](/docs/third-brain) |
+| `context` | [Context management](/docs/context) |
+| `improve.evolve` | [Self-improvement](/docs/self-improvement) |
+
+<Callout>
+  Workspace config (`<project>/.omni/config.json`) overrides user config for
+  that project — so a repo can pin its own model, modes, and permission rules
+  without touching your global setup.
+</Callout>

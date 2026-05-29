@@ -1,0 +1,122 @@
+---
+title: Architecture
+description: The engine is a closed-loop controller that streams an AsyncIterable of EngineEvents. Abort, loops, retries, verifier feedback, and snapshots are all guarantees.
+---
+
+The Omni engine is a **closed-loop controller**. `Engine.run(input)` is an
+**async generator**: it appends user input to history, then loops — call the
+model, stream its events, append the assistant message, validate any tool calls,
+gate them through permissions, execute them in parallel, append the results, and
+call the model again. The loop stops when the model returns no tool calls
+(`model_done`), when iterations or retries are exhausted, when a loop is
+detected, when an abort fires, or when a fatal error occurs.
+
+> Every observable thing is emitted as an `EngineEvent`. The engine never logs
+> or prints — events are the only public observation channel.
+
+## Lifecycle
+
+```text
+engine.start ─ (engine.iteration ─ model.* ─ tool.*)* ─ engine.done
+```
+
+A concrete sequence for a turn that calls one tool:
+
+```text
+1.  engine.start              { sessionId, input }
+2.  engine.iteration          { iteration: 1, maxIterations: 12 }
+3.  model.start               { modelId }
+4.  model.delta               { text: "I'll" }
+5.  model.tool_call_done      { call: { id, name: "bash", args } }
+6.  model.done                { finishReason: "tool_calls", usage }
+7.  engine.usage              { delta, total }
+8.  tool.permission_requested { call, tool }
+9.  tool.permission_granted   { call }
+10. tool.start                { call }
+11. tool.result               { call, result, durationMs }
+12. engine.iteration          { iteration: 2, maxIterations: 12 }
+13. model.start ... model.done { finishReason: "stop" }
+14. engine.done               { reason: "model_done", usage, durationMs }
+```
+
+Parallel tool calls (when the model emits several in one turn) interleave their
+events via `mergeStreams`.
+
+## Event taxonomy
+
+20+ discriminated-union members of `EngineEvent`, in three families plus
+context. UIs filter by `event.type`.
+
+| Family | Events |
+|---|---|
+| **Engine lifecycle** | `engine.start`, `engine.iteration`, `engine.done`, `engine.error`, `engine.usage`, `engine.loop_detected`, `engine.retrying`, `engine.warning` |
+| **Model stream** | `model.start`, `model.delta`, `model.thinking_delta`, `model.tool_call_start`, `model.tool_call_args_delta`, `model.tool_call_done`, `model.done` |
+| **Tool execution** | `tool.permission_requested`, `tool.permission_granted`, `tool.permission_denied`, `tool.invalid`, `tool.start`, `tool.progress`, `tool.result`, `tool.error` |
+| **Context / verifier** | `context.compacted`, `verifier.result` |
+
+## Closed-loop guarantees
+
+The engine does more than relay model output — it actively steers the loop.
+
+- **Tool-call validation.** Arguments are validated against each tool's Zod
+  schema *before* execution. Failed validation surfaces as `tool.invalid` with
+  a precise error the model can correct on its next turn — never a crash.
+- **Verifier / CRITIC feedback injection.** When a verifier or the Critic finds
+  a problem, its feedback is injected back **into the tool result** the model
+  sees next turn — so correction happens in-band, where the model is already
+  looking.
+- **Loop detection.** When the same set of tool calls
+  (`name + stableStringify(args)`) repeats 3 times within the last 5 turns, the
+  engine emits `engine.loop_detected` and stops with `reason: "loop_detected"`.
+- **Bounded retries.** Retryable model errors (rate limit, network, 5xx) retry
+  inline within an iteration up to `maxRetriesPerIteration` (default 2).
+  Retries do **not** consume the iteration budget.
+- **Abort propagation.** `engine.abort()` and `run({ signal })` fire through
+  `combineSignals` to every in-flight model call *and* every tool's
+  `ctx.signal` — token-level racing, so an abort interrupts a streaming
+  response mid-token.
+- **Ephemeral iteration-budget reminder.** As the iteration budget runs low, an
+  ephemeral reminder is injected so the model knows how many turns remain and
+  can prioritise — then removed so it never pollutes long-term history.
+- **Hooks.** Lifecycle hooks let surfaces observe and augment the loop without
+  forking the engine.
+- **Snapshot / restore.** `engine.snapshot()` returns
+  `{ sessionId, messages, usage, createdAt, updatedAt }`; `engine.restore(snap)`
+  rehydrates a new instance to the same state, **preserving the original
+  `sessionId`** so traces continue under one identity.
+- **Tool-result chunking.** Results larger than the cap are clipped to a
+  head/tail preview with an elision marker, so a big result never drowns a small
+  model's window.
+
+## Failure modes & safety
+
+- **Permission gate exception.** If `permissions.check()` throws, the engine
+  treats it as `deny` and emits `engine.warning` (category `permission_gate`) —
+  a gate never crashes the loop.
+- **Tracer exception.** If the tracer throws, it is disabled for the rest of the
+  run and an `engine.warning` (`tracer`) is emitted.
+- **Fatal error capping.** A run that hits a fatal `engine.error` is capped at a
+  low trace score downstream — a crashed run is never scored as a success.
+
+## Surfaces
+
+The same engine drives every surface:
+
+- **CLI** — interactive TUI + plain readline REPL, slash commands, readline
+  permission prompts, session + event persistence.
+- **Server** — HTTP + WebSocket; each WS connection owns one engine. The client
+  sends `{type:"run",input}` / `{type:"abort"}`; the server streams
+  `EngineEvent` JSON, bridging permission requests back over the socket.
+- **Web** — a minimal browser client that talks to the server.
+- **Desktop** — a Tauri app: a React UI with the engine bundled as a sidecar.
+
+## Where to look in the source
+
+| Concern | File |
+|---|---|
+| The loop | `packages/core/src/engine.ts` |
+| Event types | `packages/core/src/events.ts` |
+| AI SDK translation | `packages/adapters/src/util/*` |
+| Tool contract | `packages/core/src/types.ts` (`Tool<`) |
+| Permissions | `packages/core/src/permissions.ts` |
+| Context strategies | `packages/core/src/context.ts` |

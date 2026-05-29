@@ -1,0 +1,128 @@
+---
+title: Self-improvement
+description: Probe → adapt → adaptFromPool → scoreTrace → recordTrial. A verifier-grounded, epsilon-greedy loop that makes the harness measurably better the more you use it.
+---
+
+This is the headline feature. Omni doesn't just run a model — it **studies** the
+model, **adapts** to it, and **evolves** how it drives that model across
+sessions, grounded in whether work actually passed verification.
+
+> The promise: it measurably gets better the more you use it.
+
+## The loop
+
+```text
+        first contact                 every session
+   ┌──────────────────┐        ┌──────────────────────────┐
+   │ probe → adapt     │  ───▶  │ adaptFromPool (ε-greedy)  │
+   │ (classify model)  │        │ run → scoreTrace          │
+   └──────────────────┘        │ → recordTrial             │
+                               │ ↘ occasionally: mutate    │
+                               └──────────────────────────┘
+```
+
+### 1. Probe — classify on first contact
+
+On first contact with a model, `probeModel` runs a small battery of cheap
+prompts (~600 tokens) and returns a `ModelProfile`: does it do native tool
+calls? how well does it follow instructions? how verbose is it? what's its
+latency and error rate? The profile is cached per model in `~/.omni/db.sqlite`.
+
+### 2. Adapt — pick a strategy
+
+`adapt(profile)` maps the profile to an `AdaptedStrategy`: which base system
+prompt, whether to enable ReAct fallback, the iteration budget, when to insert a
+planner/critic, output-token reserve. This is the static substrate — always
+present, even with evolution off.
+
+### 3. adaptFromPool — explore vs. exploit
+
+When evolution is enabled, `adaptFromPool` chooses this session's operating-rules
+prompt by **epsilon-greedy** selection over a **per-model prompt-variant pool**,
+layered on top of the static strategy:
+
+- With probability `explorationRate` (and a non-empty pool) → **EXPLORE**: pick
+  a challenger via a tournament over the whole pool (under-trialed variants
+  included).
+- Otherwise, if any variant has `≥ minTrials` → **EXPLOIT**: pick the
+  highest-fitness confident variant.
+- Otherwise → **FALLBACK**: keep the static prompt.
+
+The chosen variant's text is layered onto the base prompt as a **per-run
+prefix** (`systemPromptPrefix`) — it never replaces the engine's
+environment-aware base prompt; ReAct fallback, iteration budget, and
+planner/critic flags are all preserved.
+
+### 4. scoreTrace — verifier-grounded fitness
+
+When the session ends, `scoreTrace` ranks the run. This is the crucial design
+choice: **the verifier is the primary signal.**
+
+```text
+verifierScore = passes / (passes + fails)            // "skip" excluded
+processScore  = blend of model_done, low iterations,
+                no fatal errors, diverse tool use
+w             = min(0.85, 0.5 + 0.1 · graded)         // more graded checks → trust the verifier more
+score         = graded === 0 ? processScore
+                             : w·verifierScore + (1 − w)·processScore
+fatal error   ⇒ score capped at 0.10                 // a crashed run is never a success
+```
+
+Process metrics (did it finish, how many iterations, errors, tool diversity) are
+only the **tie-breaker** — and when no verifier graded the run (e.g. a
+pure-research task with no edits), the process score stands alone. As more
+checks are graded, `w` rises and the verifier dominates.
+
+### 5. recordTrial — and occasionally mutate
+
+At session end, `recordTrial` writes the variant's outcome back to the pool,
+updating its trial count and fitness. With probability `mutationRate`, Omni
+seeds a **mutated challenger** (`mutatePrompt` does add/drop/swap operations on
+the rule lines) for future exploration — so the pool keeps generating new
+candidates instead of converging early.
+
+## Enabling it
+
+Self-improvement is **gated behind `config.improve.evolve`** and **off by
+default**. Turn it on per user or per workspace:
+
+```json
+{
+  "improve": {
+    "evolve": {
+      "enabled": true,
+      "minTrials": 3,
+      "explorationRate": 0.1,
+      "mutationRate": 0.15,
+      "tournamentK": 3,
+      "maxVariantsPerModel": 50
+    }
+  }
+}
+```
+
+| Key | Meaning | Default |
+|---|---|---|
+| `enabled` | Master switch. When off, the static `adapt()` strategy is used unchanged. | `false` |
+| `minTrials` | Trials a variant needs before its fitness is trusted for exploitation. | `3` |
+| `explorationRate` | ε — probability of trying a challenger over the best variant. | `0.1` |
+| `mutationRate` | Probability of seeding a mutated challenger at session end. | `0.15` |
+| `tournamentK` | Tournament size for exploration picks. | `3` |
+| `maxVariantsPerModel` | Cap on stored variants per model (oldest low-fitness pruned). | `50` |
+
+## Inspecting it
+
+Two slash commands let you watch the harness learn:
+
+```text
+/profile     the cached ModelProfile for the active model (probe results)
+/evolve      the variant pool: each variant's trials, fitness, and which
+             one this run used (exploit / explore / fallback)
+```
+
+<Callout title="Why verifier-grounded matters">
+  Scoring on process alone rewards a model that *looks* productive — lots of
+  tool calls, a confident "done." Grounding fitness in the verifier means the
+  variants that win are the ones whose work **actually passed checks**. The pool
+  evolves toward correctness, not theatre.
+</Callout>

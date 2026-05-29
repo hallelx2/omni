@@ -1,0 +1,44 @@
+---
+title: Context management
+description: Summarize-by-default compaction, sliding and token-budget strategies, a tiktoken tokenizer, and prompt-cache token surfacing.
+---
+
+A small model's context window is precious. Omni's `ContextManager` is an
+append-only message store with a pluggable `ContextStrategy` that keeps a run
+inside its token budget without throwing away what matters.
+
+## Strategies
+
+| Strategy | Behavior |
+|---|---|
+| **summarize** *(default)* | Older turns are **compacted into a summary**, not dropped — the agent keeps the gist of earlier work. |
+| **budget** | `TokenBudgetStrategy` fits within a token budget using a `Tokenizer`, always preserving system messages. |
+| **sliding** | `SlidingWindowStrategy` keeps the most recent N messages. |
+
+When a turn drops or compacts messages, the engine emits `context.compacted` so
+surfaces can show it happened.
+
+## Tokenizer
+
+The default `TiktokenTokenizer` (tiktoken) counts tokens accurately for budget
+decisions. Tool results larger than the cap are clipped to a head/tail preview
+via `chunkToolResult` before they're appended — a giant result never blows the
+budget on its own.
+
+## Prompt-cache token surfacing
+
+Omni surfaces cached-token usage where the provider reports it (OpenAI-compatible
+including MiMo, and Anthropic), so `/usage` reflects the real, cache-discounted
+cost. On a repeat task this measured roughly **−80%** tokens/cost. See
+[Providers](/docs/providers).
+
+## Configuration
+
+```json
+{
+  "context": {
+    "strategy": "summarize",
+    "maxTokens": 16000
+  }
+}
+```

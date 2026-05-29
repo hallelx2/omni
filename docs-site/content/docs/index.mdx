@@ -1,0 +1,76 @@
+---
+title: Introduction
+description: Omni is a self-improving agent harness for open LLMs. The model is interchangeable — the harness is the agent.
+---
+
+Omni gives **any** language model — frontier or open, big or small — a body to
+act through, a memory to learn from, and an evolving sense of how to use itself.
+It was built for the open-model wave (MiMo, Qwen, GLM, DeepSeek, Kimi, Llama via
+Ollama) and works just as well with Claude, GPT, and Gemini.
+
+## The thesis
+
+> The model is interchangeable. The harness **is** the agent.
+
+Most agent frameworks assume a frontier model. Run them on a local 7B and they
+crumble — the model hallucinates tool names, drops formatting, goes in circles.
+The convenient answer is to wait for open models to catch up. Omni takes the
+other route:
+
+**Weaker models become useful when the harness around them is strong.** Instead
+of asking a 7B model to plan, execute, and reflect on its own, Omni layers in a
+planner, a critic, and a memory; probes the model on first contact; and adapts
+its prompts, tools, and loop strategy to fit. The result is an agent that
+punches above the model's weight class — and one that **measurably gets better
+the more you use it**.
+
+## The three pillars
+
+<Cards>
+  <Card title="Third brain" href="/docs/third-brain">
+    A Planner decomposes the task, a Critic reviews every turn, and Memory
+    recalls what worked before. Each can run on a stronger model than the
+    executor.
+  </Card>
+  <Card title="Hands" href="/docs/tools">
+    bash, read/write, edit, multi_edit, apply_patch, glob, grep, web_fetch, and
+    an MCP client — real tools, cross-platform, with path safety.
+  </Card>
+  <Card title="Super legs" href="/docs/self-improvement">
+    Probe a model, adapt the strategy, evolve a per-model prompt-variant pool
+    with verifier-grounded scoring. Self-improvement, wired into the loop.
+  </Card>
+</Cards>
+
+## What makes Omni different
+
+- **A streaming, closed-loop engine.** `Engine.run(input)` is one async
+  generator emitting 20+ discriminated [`EngineEvent`](/docs/architecture)
+  variants. The engine never logs or prints — events are the only observation
+  channel. Token-level abort propagation, loop detection, bounded retries,
+  parallel tool calls, and snapshot/restore are all guaranteed.
+- **A specialized subagent fleet.** `explore`, `test`, `critique`, plus
+  `frontend-engineer`, `backend-node`, `backend-python`, `backend-go`, and
+  `data-engineer` — each a sandboxed child engine with enforced per-tool
+  permission regexes and [auto-loaded skills](/docs/skills).
+- **Self-improvement that is actually wired in.** Probe → adapt →
+  [adaptFromPool](/docs/self-improvement) (epsilon-greedy explore/exploit) →
+  scoreTrace (verifier-grounded) → recordTrial. Inspect it live with `/evolve`
+  and `/profile`.
+- **Layered permissions.** Mode-aware gates → workspace guards
+  (destructive-bash denied by default) → autoAllow → an audit log.
+
+## Where to go next
+
+- New here? Jump to the [**Quick start**](/docs/quick-start) — one line to
+  install, one key to set, one command to run.
+- Want the mental model? Read the [**Architecture**](/docs/architecture).
+- Curious about the headline feature? Read
+  [**Self-improvement**](/docs/self-improvement).
+
+<Callout title="Status">
+  Omni is v0.1.0 — 571 tests passing across 65 files, 11 packages, ~24,000 lines
+  of TypeScript. Verified live driving MiMo-V2.5-Pro end-to-end (read → edit →
+  run tests, self-corrected via the verifier loop), with prompt caching measured
+  at roughly **−80%** tokens/cost on a repeat task.
+</Callout>

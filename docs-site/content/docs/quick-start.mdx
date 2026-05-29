@@ -1,0 +1,94 @@
+---
+title: Quick start
+description: Install Omni, set one API key, and run the agent — in under a minute.
+---
+
+Omni ships as a single prebuilt binary. Pick an install method, drop in a key,
+and run.
+
+## 1. Install
+
+<Tabs items={["macOS / Linux", "Windows", "npm"]}>
+  <Tab value="macOS / Linux">
+    The one-liner downloads the prebuilt binary, installs it to `~/.omni/bin`,
+    and wires your `PATH`:
+
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/hallelx2/omni/main/install.sh | bash
+    ```
+  </Tab>
+  <Tab value="Windows">
+    Run in PowerShell:
+
+    ```powershell
+    irm https://raw.githubusercontent.com/hallelx2/omni/main/install.ps1 | iex
+    ```
+  </Tab>
+  <Tab value="npm">
+    Install the launcher globally — it pulls the right native binary for your
+    platform:
+
+    ```bash
+    npm i -g omni-harness        # @latest
+    npm i -g omni-harness@beta   # pre-release channel
+    ```
+  </Tab>
+</Tabs>
+
+## 2. Set a key
+
+Omni keeps per-user state in `~/.omni/`. Drop your provider key into
+`~/.omni/.env`:
+
+```bash
+echo 'MIMO_API_KEY=tp-...' >> ~/.omni/.env
+```
+
+<Callout>
+  With `MIMO_API_KEY` present, Omni auto-selects the **MiMo** adapter — no
+  `OMNI_ADAPTER` needed. For any other provider, set its key (see the
+  [Provider matrix](/docs/providers)) and `OMNI_ADAPTER`, or configure
+  `providers` in [`~/.omni/config.json`](/docs/configuration).
+</Callout>
+
+## 3. Run
+
+```bash
+omni                  # full TUI
+omni --plain          # plain readline REPL (pipes / CI)
+```
+
+Inside the session, type a task in natural language. Use
+[slash commands](/docs/slash-commands) like `/mode`, `/plan`, `/build`,
+`/profile`, and `/evolve` to steer the harness. `/paths` shows exactly which
+files Omni resolved.
+
+## Build from source
+
+```bash
+git clone https://github.com/hallelx2/omni.git && cd omni
+bun install
+bun run setup         # build host binary → ~/.omni/bin/omni + wire PATH
+```
+
+Or run straight from source without building:
+
+```bash
+bun run dev           # interactive TUI
+OMNI_ADAPTER=mimo bun run dev
+bun run dev --plain   # readline REPL
+bun test              # the test suite
+bun run typecheck     # all packages
+```
+
+<Callout type="info" title="Bun">
+  The Omni repo itself is a Bun workspace monorepo. The published binary is
+  self-contained — you only need Bun if you are building from source or
+  contributing.
+</Callout>
+
+## Next steps
+
+- Understand the loop: [**Architecture**](/docs/architecture)
+- Connect a different model: [**Providers**](/docs/providers)
+- Turn on the headline feature: [**Self-improvement**](/docs/self-improvement)

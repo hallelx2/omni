@@ -1,0 +1,86 @@
+---
+title: Providers & adapters
+description: MiMo, Ollama, Anthropic, OpenAI, Google, and a mock adapter — all through the Vercel AI SDK 6.
+---
+
+An **adapter** translates between Omni's normalized message/tool shape and a
+specific model provider. Every non-mock adapter goes through the
+**[Vercel AI SDK 6](https://github.com/vercel/ai)** for streaming, tool calling,
+and translation.
+
+## The adapter contract
+
+```ts
+interface ModelAdapter {
+  readonly id: string
+  readonly name: string
+  readonly capabilities: ModelCapabilities
+  complete(params: CompleteParams): AsyncIterable<ModelEvent>
+}
+```
+
+An adapter consumes Omni's `Message`/`ToolSchema`, translates to the AI SDK 6
+`ModelMessage` + tool format (`messagesToAISDK`, `toolsToAISDK`), calls
+`streamText`, then re-translates the AI SDK stream back into `ModelEvent` via
+`translateStream`. Costs are computed in a `withCost` transform when the model's
+capabilities declare per-1k rates.
+
+## Provider matrix
+
+| Adapter | Endpoint | Env var | Notes |
+|---|---|---|---|
+| `mimo` | `https://token-plan-sgp.xiaomimimo.com/v1` | `MIMO_API_KEY` | Lowercase model ids (`mimo-v2.5-pro`); `reasoning_content` auto-roundtripped |
+| `mimo-anthropic` | `<base>/anthropic/v1` | `MIMO_API_KEY` | Same key, Anthropic wire protocol |
+| `ollama` | `http://localhost:11434/v1` | *(none)* | Any tag Ollama serves locally |
+| `anthropic` | `api.anthropic.com` | `ANTHROPIC_API_KEY` | Extended thinking supported |
+| `openai` | `api.openai.com` | `OPENAI_API_KEY` | gpt-4o, gpt-4o-mini, o-series |
+| `google` | `generativelanguage.googleapis.com` | `GOOGLE_API_KEY` | gemini-2.0-flash, 1.5-pro |
+| `mock` | *(none)* | *(none)* | Scripted; for tests and offline dev |
+
+The `OpenAICompatibleAdapter` covers any OpenAI-compatible endpoint — MiMo,
+Ollama, OpenRouter, vLLM, LM Studio, Together, DeepInfra, and more. `mimo()` and
+`ollama()` are factory helpers that preconfigure base URLs and per-model
+capability flags.
+
+## Selecting an adapter
+
+Precedence, highest first:
+
+1. The `OMNI_ADAPTER` environment variable.
+2. Auto-selection from a present key — e.g. `MIMO_API_KEY` selects `mimo`.
+3. The `adapter` field in [`~/.omni/config.json`](/docs/configuration).
+
+```bash
+OMNI_ADAPTER=ollama omni                 # local model via Ollama
+OMNI_ADAPTER=anthropic omni              # with ANTHROPIC_API_KEY set
+```
+
+## Configuring keys & base URLs
+
+Set keys per provider in the `providers` block of
+[`~/.omni/config.json`](/docs/configuration):
+
+```json
+{
+  "adapter": "mimo",
+  "model": "mimo-v2.5-pro",
+  "providers": {
+    "mimo": {
+      "apiKey": "tp-...",
+      "baseURL": "https://token-plan-sgp.xiaomimimo.com/v1"
+    },
+    "anthropic": { "apiKey": "sk-ant-..." },
+    "ollama": { "baseURL": "http://localhost:11434/v1" }
+  }
+}
+```
+
+<Callout title="Prompt caching">
+  Cached-token usage is surfaced and billed for OpenAI-compatible providers
+  (including MiMo) and Anthropic. On a repeat task this measured roughly
+  **−80%** tokens/cost. Cached-token accounting on other providers depends on
+  what their API reports.
+</Callout>
+
+Adding a new provider is roughly 80 lines — see
+[Authoring an adapter](/docs/authoring/adapter).

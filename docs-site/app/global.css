@@ -1,0 +1,219 @@
+@import "tailwindcss";
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+
+/* Fumadocs needs to scan its own source for the utility classes it emits. */
+@source "../node_modules/fumadocs-ui/dist/**/*.js";
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Omni theme — dark-first developer-tool aesthetic.
+   Restrained neon: a single cyan/teal accent, monospace terminal accents.
+   ─────────────────────────────────────────────────────────────────────────── */
+:root {
+  --omni-accent: 178 84% 52%;          /* teal-cyan */
+  --omni-accent-soft: 178 70% 62%;
+  --omni-violet: 268 84% 68%;
+  --color-fd-background: 0 0% 100%;
+}
+
+.dark {
+  /* Deep, slightly blue-black — not pure black, reads as "tool" not "void". */
+  --color-fd-background: 230 25% 5%;
+  --color-fd-card: 230 22% 7%;
+  --color-fd-popover: 230 24% 6%;
+  --color-fd-muted: 230 18% 12%;
+  --color-fd-muted-foreground: 220 12% 60%;
+  --color-fd-border: 225 15% 16%;
+  --color-fd-primary: var(--omni-accent);
+  --color-fd-accent: 225 18% 14%;
+  --color-fd-ring: var(--omni-accent);
+}
+
+:root,
+.dark {
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", "Menlo",
+    "Consolas", monospace;
+}
+
+/* Monospace, terminal-leaning accents on headings and code. */
+.dark code,
+.dark kbd {
+  font-family: var(--font-mono);
+}
+
+/* Refined selection color in the accent. */
+::selection {
+  background: hsl(var(--omni-accent) / 0.28);
+  color: hsl(0 0% 100%);
+}
+
+/* ── Hero: NO grid. Layered radial glow + conic aurora + token stream. ────── */
+.omni-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+/* Soft radial spotlight behind the wordmark. */
+.omni-hero::before {
+  content: "";
+  position: absolute;
+  inset: -20% -10% auto -10%;
+  height: 130%;
+  z-index: -2;
+  background:
+    radial-gradient(
+      62% 55% at 50% 18%,
+      hsl(var(--omni-accent) / 0.22) 0%,
+      hsl(var(--omni-accent) / 0.06) 38%,
+      transparent 72%
+    ),
+    radial-gradient(
+      48% 50% at 78% 8%,
+      hsl(var(--omni-violet) / 0.16) 0%,
+      transparent 70%
+    );
+  filter: saturate(1.1);
+}
+
+/* Slow-drifting conic aurora mesh — premium, never a grid. */
+.omni-hero::after {
+  content: "";
+  position: absolute;
+  inset: -40% -30%;
+  z-index: -3;
+  background:
+    conic-gradient(
+      from 120deg at 30% 30%,
+      hsl(var(--omni-accent) / 0.10),
+      transparent 30%,
+      hsl(var(--omni-violet) / 0.10) 55%,
+      transparent 80%,
+      hsl(var(--omni-accent) / 0.10)
+    );
+  filter: blur(70px);
+  opacity: 0.85;
+  animation: omni-aurora 26s linear infinite;
+}
+
+@keyframes omni-aurora {
+  0% {
+    transform: rotate(0deg) scale(1.05);
+  }
+  100% {
+    transform: rotate(360deg) scale(1.05);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .omni-hero::after,
+  .omni-token-stream {
+    animation: none !important;
+  }
+}
+
+/* A subtle animated token/character stream drifting upward, low opacity. */
+.omni-token-stream {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black 18%,
+    black 72%,
+    transparent
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black 18%,
+    black 72%,
+    transparent
+  );
+}
+
+.omni-token-stream span {
+  position: absolute;
+  bottom: -1.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: hsl(var(--omni-accent-soft) / 0.42);
+  white-space: nowrap;
+  animation: omni-rise linear infinite;
+  text-shadow: 0 0 12px hsl(var(--omni-accent) / 0.25);
+}
+
+@keyframes omni-rise {
+  from {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-115vh);
+    opacity: 0;
+  }
+}
+
+/* The Ω wordmark gradient. */
+.omni-omega {
+  background: linear-gradient(
+    135deg,
+    hsl(var(--omni-accent)) 0%,
+    hsl(var(--omni-accent-soft)) 42%,
+    hsl(var(--omni-violet)) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 4px 28px hsl(var(--omni-accent) / 0.35));
+}
+
+/* Hairline gradient borders for feature cards. */
+.omni-card {
+  position: relative;
+  background:
+    linear-gradient(hsl(var(--color-fd-card)), hsl(var(--color-fd-card)))
+      padding-box,
+    linear-gradient(
+        135deg,
+        hsl(var(--omni-accent) / 0.35),
+        hsl(var(--color-fd-border)) 45%,
+        hsl(var(--omni-violet) / 0.25)
+      )
+      border-box;
+  border: 1px solid transparent;
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.omni-card:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 10px 40px -12px hsl(var(--omni-accent) / 0.25),
+    0 0 0 1px hsl(var(--omni-accent) / 0.12);
+}
+
+.omni-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: hsl(var(--omni-accent-soft));
+}
+
+.omni-pill {
+  font-family: var(--font-mono);
+  border: 1px solid hsl(var(--omni-accent) / 0.3);
+  background: hsl(var(--omni-accent) / 0.08);
+  color: hsl(var(--omni-accent-soft));
+}

@@ -1,0 +1,30 @@
+---
+title: Authoring guides
+description: Extend Omni — write a tool, plug in an adapter, define a subagent, or package a skill.
+---
+
+Omni is built to be extended along four clean seams. Pick the one that matches
+what you want to add.
+
+<Cards>
+  <Card title="A tool" href="/docs/authoring/tool">
+    Give the model a new hand — a callable with a Zod schema and an execute()
+    method.
+  </Card>
+  <Card title="An adapter" href="/docs/authoring/adapter">
+    Plug in a new model provider through the Vercel AI SDK 6 translation
+    helpers.
+  </Card>
+  <Card title="A subagent" href="/docs/authoring/subagent">
+    Define a sandboxed specialist with an AGENT.md — its own model, tools,
+    permissions, and skills.
+  </Card>
+  <Card title="A skill" href="/docs/authoring/skill">
+    Package domain guidance as a SKILL.md directory the agent can carry into a
+    task.
+  </Card>
+</Cards>
+
+Each seam is independent: a tool doesn't know about adapters, a subagent
+composes tools and skills it doesn't have to implement, and a skill never
+touches the tool layer at all.

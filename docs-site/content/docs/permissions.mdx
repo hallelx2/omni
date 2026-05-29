@@ -1,0 +1,78 @@
+---
+title: Permissions
+description: Layered defense — mode-aware gates, workspace guards with destructive-bash denied by default, an autoAllow list, and an audit log.
+---
+
+Permissions in Omni are **layered**. A tool call passes through several gates;
+any one can deny it. A gate never throws — if it errors, the engine treats it as
+a deny.
+
+## The layers, in order
+
+```text
+tool call
+   │
+   ▼  1. mode-aware gate     (plan = read-only; auto = auto-allow prompts)
+   ▼  2. workspace guards    (destructive-bash deny; optional confinement)
+   ▼  3. autoAllow list      (pre-approved patterns)
+   ▼  4. rules               (explicit allow/deny patterns)
+   ▼  audit log              (every decision recorded)
+   │
+   ▼  execute (or deny)
+```
+
+1. **Mode-aware.** [Plan](/docs/modes) exposes only read-only tools; **auto**
+   auto-allows what would otherwise prompt. The mode sets the baseline.
+2. **Workspace guards.** **Destructive bash is denied by default** —
+   `looksDestructive(args)` recognizes obvious hazards (`rm -rf /`, fork bombs,
+   `curl | sh`). Optional `restrictToWorkspace` confines file writes to the
+   project tree.
+3. **autoAllow.** Patterns you've pre-approved so they never prompt again.
+4. **Rules.** Explicit `allow`/`deny` patterns, with optional `when` predicates.
+
+Every decision flows into an **audit log** via `AuditingPermissions`.
+
+## Configuration
+
+```json
+{
+  "permissions": {
+    "mode": "ask",
+    "autoAllow": ["^git (status|diff|log)\\b", "^bun test\\b"],
+    "denyDestructive": true,
+    "restrictToWorkspace": false,
+    "rules": [
+      { "tool": "bash", "deny": ["^rm\\b"] },
+      { "tool": "write_file", "allow": ["^src/"] }
+    ]
+  }
+}
+```
+
+| Key | Meaning |
+|---|---|
+| `mode` | Base gate behavior — `ask`, `allow`, `deny`. |
+| `autoAllow` | Patterns auto-approved without a prompt. |
+| `denyDestructive` | Deny destructive bash by default (recommended on). |
+| `restrictToWorkspace` | Confine file writes to the workspace tree (opt-in). |
+| `rules` | Explicit per-tool `allow` / `deny` patterns. |
+
+## Pluggable gates (API)
+
+Programmatically, gates compose: `AllowAllPermissions`, `DenyAllPermissions`,
+`StaticPermissions`, `AskPermissions`, `RuleBasedPermissions`, all wrappable in
+`AuditingPermissions`. `looksDestructive(args)` is exported as a `when`
+predicate for bash deny rules.
+
+<Callout type="warn">
+  Auto mode auto-allows the **prompt**, not the guards. Destructive-bash deny,
+  workspace confinement, and the audit log all still apply — see
+  [Modes](/docs/modes).
+</Callout>
+
+## Subagent permissions are independent
+
+Each [subagent](/docs/subagents) carries its own enforced per-tool regex rules
+in its `AGENT.md`. Those are checked in addition to the layers above — a
+subagent can be strictly narrower than the main agent, never broader than its
+own allowlist.

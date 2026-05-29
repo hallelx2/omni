@@ -1,0 +1,67 @@
+---
+title: Modes
+description: Plan, Auto, and Build — three operating modes that trade autonomy for oversight. Safety guards apply in every mode.
+---
+
+A **mode** sets the agent's autonomy and which roles of the
+[third brain](/docs/third-brain) are active. Switch at any time with a slash
+command.
+
+## The three modes
+
+| Mode | Tools | Permission prompts | Roles |
+|---|---|---|---|
+| **plan** | read-only | n/a | **Planner** runs first |
+| **build** | all tools | yes (gated) | **Critic** reviews after |
+| **auto** | all tools | auto-allowed | unattended |
+
+### plan
+
+Read-only tools plus the **Planner**, which decomposes the task before anything
+executes. Use it to think through an approach without touching the filesystem.
+
+### build
+
+The full toolset with permission prompts, plus the **Critic** reviewing
+assistant turns and tool results. The default for hands-on work.
+
+### auto
+
+The full toolset with permission prompts **auto-allowed** — for unattended runs
+(CI, batch tasks).
+
+<Callout type="warn" title="Guards still apply in auto">
+  Auto-allow only answers the *prompt*. The [permission](/docs/permissions)
+  layer is still active: destructive bash is denied by default, workspace
+  confinement (if enabled) still holds, and the audit log still records every
+  decision. Auto removes the human, not the guards.
+</Callout>
+
+## Switching modes
+
+```text
+/mode              show the current mode
+/mode plan         switch to plan
+/mode auto         switch to auto
+/mode build        switch to build
+/plan  /auto  /build   shorthands for the above
+```
+
+Set the startup default in [`config.json`](/docs/configuration):
+
+```json
+{ "modes": { "default": "build" } }
+```
+
+## Intent autoclassify (opt-in)
+
+An optional classifier can pick the mode per turn from the user's intent — e.g.
+routing a "what does X do?" question to **plan** and a "fix the failing test" to
+**build**. It is opt-in and never overrides an explicit `/mode`.
+
+## Requesting an upgrade — `request_build_mode`
+
+From **plan** mode the agent can call `request_build_mode` to ask to switch into
+build mode once it has a plan. This is **human-gated**: the request surfaces to
+you, and execution only proceeds after you approve — so a read-only session
+never silently becomes a writing one.

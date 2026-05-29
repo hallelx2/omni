@@ -1,0 +1,101 @@
+---
+title: Subagents & the fleet
+description: AGENT.md-defined sandboxed child engines with enforced per-tool permission regexes — plus a specialized fleet of frontend, backend, and data engineers.
+---
+
+A **subagent** is a sandboxed child engine the main agent can call as a tool. It
+has its own model, its own tool subset, and its own **enforced** per-tool
+permission rules. The agent can call one directly, or fan several out in
+parallel with `dispatch_agents`.
+
+## The shipped fleet
+
+Omni ships these as `AGENT.md` definitions inside the repo. Override or add your
+own in `~/.omni/agents/<name>/AGENT.md` or workspace `.omni/agents/`.
+
+| Agent | Role |
+|---|---|
+| `explore` | Read-only reconnaissance — map a codebase, answer "where / how" questions. |
+| `test` | Runs the test toolchain; may write `*.test.ts` but not arbitrary files, and never destructive shell. |
+| `critique` | Reviews a change or transcript and reports issues. |
+| `frontend-engineer` | Ships React/Next.js + Tailwind UIs; runs the frontend dev/build/lint/test toolchain. Auto-loads `frontend-design`, `aceternity-ui`, `web-design-guidelines`. |
+| `backend-node` | Node/TypeScript services and APIs. |
+| `backend-python` | Python services, scripts, and tooling. |
+| `backend-go` | Go services and CLIs. |
+| `data-engineer` | Pipelines, SQL, and data tooling. |
+
+## The AGENT.md format
+
+An `AGENT.md` is a frontmatter block followed by the system prompt body. Every
+field:
+
+```json
+{
+  "name": "frontend-engineer",
+  "description": "Builds and refines React/Next.js + Tailwind UIs...",
+  "model": "anthropic:claude-sonnet-4-5",
+  "tools": ["read_file", "glob", "grep", "edit", "multi_edit", "write_file", "bash", "web_fetch"],
+  "permissionDefault": "deny",
+  "permissions": {
+    "bash": { "allow": ["^(bun|pnpm|npm|yarn)\\s+(run\\s+)?(dev|build|lint|test)\\b"] },
+    "write_file": { "deny": ["(^|/)(\\.env|\\.git/|node_modules/)"] }
+  },
+  "maxIterations": 40,
+  "history": "isolate",
+
+  "skills": ["frontend-design", "aceternity-ui", "web-design-guidelines"],
+  "skillResources": "summary",
+  "languages": ["typescript", "tsx", "css"],
+  "domains": ["frontend", "ui", "react", "nextjs"],
+  "context": ["NOTES.md"]
+}
+```
+
+### Fields
+
+| Field | Meaning |
+|---|---|
+| `name`, `description` | Identity; `description` is what the router and the parent model see. |
+| `model` | `provider:model` or a bare name. Omitted → use the main model. |
+| `tools` | Tool-name allowlist. Omitted → all tools the parent passes through. |
+| `permissions` | Per-tool `allow` / `deny` **regex** rules. `deny` is evaluated before `allow`. |
+| `permissionDefault` | Decision when no rule matches — `"allow"` or `"deny"` (default `deny`). |
+| `allowDestructive` | Opt out of the built-in destructive-bash deny (default `false`). |
+| `maxIterations` | Per-subagent iteration budget. |
+| `history` | `"isolate"` (fresh history), `"keep"`, or `{ "keepLast": N }`. |
+| `skills` | Skill names to **load into the prompt** — see below. |
+| `skillResources` | How much skill body to inline: `"summary"` (default), `"full"`, or `"none"`. |
+| `languages`, `domains` | Hints used by the auto-[router](#routing). Lowercased. |
+| `context` | Extra `.md` files (relative to the agent dir) appended to the prompt. |
+
+<Callout type="warn" title="Permissions are enforced, not advisory">
+  The `permissions` regexes are checked by the engine on every tool call inside
+  the subagent. The `test` agent can run `bun test` but the engine will **deny**
+  `rm -rf` regardless of what the model attempts — the prompt and the gate are
+  independent layers.
+</Callout>
+
+## Skills widen knowledge, not reach
+
+A subagent's `skills:` frontmatter loads those skills' guidance into its system
+prompt (capped by `skillResources`) **without widening its tool allowlist**. The
+`frontend-engineer` knows *how* to build a great UI because it carries
+`frontend-design` + `aceternity-ui` + `web-design-guidelines` — but it still can
+only touch the tools and paths its permissions allow. See [Skills](/docs/skills).
+
+## Parallel dispatch
+
+`dispatch_agents` fans several subagents out at once with **bounded
+concurrency**, **partial-failure isolation**, and **abort propagation**, then
+collects every result when they finish. One subagent failing doesn't sink the
+batch.
+
+## Routing
+
+`routeAgents(task, agents)` scores the available agents against a task using
+their `languages` and `domains` hints and returns ranked matches — so "build the
+dashboard UI" routes to `frontend-engineer` and "write the ETL job" routes to
+`data-engineer`.
+
+See [Authoring an AGENT.md subagent](/docs/authoring/subagent) to build your
+own.

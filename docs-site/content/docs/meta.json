@@ -1,0 +1,24 @@
+{
+  "title": "Documentation",
+  "root": true,
+  "pages": [
+    "index",
+    "quick-start",
+    "---Concepts---",
+    "architecture",
+    "providers",
+    "tools",
+    "subagents",
+    "skills",
+    "modes",
+    "third-brain",
+    "self-improvement",
+    "permissions",
+    "context",
+    "---Reference---",
+    "configuration",
+    "slash-commands",
+    "---Authoring---",
+    "authoring"
+  ]
+}
