@@ -8,8 +8,8 @@
  *   - auto: side-effect-free reads (glob, grep, read_file)
  *   - ask:  side-effect-causing writes/exec (bash, edit, write_file, web_fetch)
  */
-export { bash, bashShell } from "./bash.ts"
-export type { BashArgs, BashResult, ShellKind } from "./bash.ts"
+export { bash, bashShell, resolveShell, setBashShellPref } from "./bash.ts"
+export type { BashArgs, BashResult, ShellKind, ShellFamily, ShellPref, ResolvedShell } from "./bash.ts"
 
 export { readFile, writeFile } from "./fs.ts"
 
