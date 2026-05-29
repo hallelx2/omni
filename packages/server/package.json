@@ -17,6 +17,7 @@
     "@omni/adapters": "workspace:*",
     "@omni/tools": "workspace:*",
     "@omni/storage": "workspace:*",
+    "@omni/improve": "workspace:*",
     "@omni/cli": "workspace:*",
     "ulid": "catalog:",
     "zod": "catalog:"

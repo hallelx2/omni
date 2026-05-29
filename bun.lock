@@ -160,6 +160,7 @@
         "@omni/adapters": "workspace:*",
         "@omni/cli": "workspace:*",
         "@omni/core": "workspace:*",
+        "@omni/improve": "workspace:*",
         "@omni/storage": "workspace:*",
         "@omni/tools": "workspace:*",
         "ulid": "catalog:",

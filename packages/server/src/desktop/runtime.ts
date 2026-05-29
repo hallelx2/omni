@@ -37,6 +37,7 @@ import {
   type CumulativeUsage,
   type AskHandler,
   type ModelAdapter,
+  type EngineEvent,
 } from "@omni/core"
 import {
   MockAdapter,
@@ -53,9 +54,20 @@ import {
   PatchAppliesVerifier, FileParsesVerifier, TypecheckVerifier, TestVerifier,
 } from "@omni/tools"
 import {
-  Storage, SessionsRepo, MessagesRepo, EventsRepo, AuditRepo,
+  Storage, SessionsRepo, MessagesRepo, EventsRepo, AuditRepo, VariantsRepo,
   type SessionRow, type StoredMessage,
 } from "@omni/storage"
+import {
+  adaptFromPool,
+  poolFromRows,
+  rowFromVariant,
+  addVariant,
+  emptyPool,
+  mutatePrompt,
+  scoreTrace,
+  EVOLUTION_SEED,
+  type ModelProfile,
+} from "@omni/improve"
 import { ProjectStore } from "./projects.ts"
 import { defaultModelRef } from "./providers.ts"
 import type { SessionSummary, ChatMessage, ServerMessage, UsageSummary } from "./protocol.ts"
@@ -79,6 +91,9 @@ interface LiveSession {
   persistedCount: number
   send: Sink | null
   running: boolean
+  /** Evolve loop: the variant driving this session (null when disabled). */
+  activeVariantId: string | null
+  evolveEnabled: boolean
 }
 
 export interface RuntimeOptions {
@@ -92,6 +107,7 @@ export class SessionRuntime {
   readonly messages: MessagesRepo
   readonly events: EventsRepo
   readonly audit: AuditRepo
+  readonly variants: VariantsRepo
   readonly projects: ProjectStore
 
   private userConfig: Config
@@ -110,6 +126,7 @@ export class SessionRuntime {
     this.messages = new MessagesRepo(this.storage)
     this.events = new EventsRepo(this.storage)
     this.audit = new AuditRepo(this.storage)
+    this.variants = new VariantsRepo(this.storage)
     this.projects = new ProjectStore()
     this.userConfig = loadConfig(omniConfigPath())
     this.permTimeoutMs = opts.permissionTimeoutMs ?? 120_000
@@ -241,6 +258,35 @@ export class SessionRuntime {
       this.persistNewMessages(live)
       this.updateMeta(sessionId, { usage: live.engine.usage() })
       this.sessions.setStatus(sessionId, failed ? "failed" : "completed")
+      this.scoreEvolveTrial(live)
+    }
+  }
+
+  /**
+   * Close the self-improvement loop for a finished run: score this session's
+   * trace (verifier-grounded) and fold it into the active variant, then
+   * occasionally seed a mutated challenger. Best-effort — never throws.
+   */
+  private scoreEvolveTrial(live: LiveSession): void {
+    if (!live.evolveEnabled) return
+    try {
+      const evs = this.events.bySession(live.id).map((r) => r.data as EngineEvent)
+      if (evs.length === 0) return
+      const score = scoreTrace(evs)
+      if (live.activeVariantId) this.variants.recordTrial(live.activeVariantId, score)
+      const cfg = this.userConfig.improve?.evolve
+      if (Math.random() < (cfg?.mutationRate ?? 0.15)) {
+        const top = this.variants.ranked(live.adapter.id)[0]
+        if (top) {
+          const childText = mutatePrompt(top.text)
+          if (childText !== top.text) {
+            const { variant } = addVariant(emptyPool(), childText, top.id)
+            this.variants.upsert(rowFromVariant(live.adapter.id, variant))
+          }
+        }
+      }
+    } catch {
+      // evolve scoring is best-effort
     }
   }
 
@@ -302,6 +348,45 @@ export class SessionRuntime {
       persistedCount: 0,
       send,
       running: false,
+      activeVariantId: null,
+      evolveEnabled: false,
+    }
+
+    // ── Self-improvement loop selection (opt-in via config.improve.evolve) ─────
+    // Mirrors the CLI bootstrap: hydrate+seed the model's variant pool and pick
+    // an operating-rules variant to layer onto the base prompt. The desktop has
+    // no probe, so a synthetic profile drives adaptFromPool — only the chosen
+    // variant text/id is used (the static strategy is ignored here).
+    let activeVariantText: string | null = null
+    if (config.improve?.evolve?.enabled === true && adapter.id !== "mock") {
+      try {
+        let pool = poolFromRows(this.variants.forModel(adapter.id))
+        if (pool.variants.length === 0) {
+          const { variant } = addVariant(emptyPool(), EVOLUTION_SEED)
+          this.variants.upsert(rowFromVariant(adapter.id, variant))
+          pool = poolFromRows(this.variants.forModel(adapter.id))
+        }
+        const synthProfile: ModelProfile = {
+          modelId: adapter.id,
+          probedAt: 0,
+          nativeToolCalls: true,
+          followsInstructions: true,
+          verboseByDefault: false,
+          averageLatencyMs: 0,
+          errorRate: 0,
+          notes: [],
+        }
+        const sel = adaptFromPool(synthProfile, pool, {
+          minTrials: config.improve.evolve.minTrials,
+          explorationRate: config.improve.evolve.explorationRate,
+          tournamentK: config.improve.evolve.tournamentK,
+        })
+        activeVariantText = sel.variant?.text ?? null
+        live.activeVariantId = sel.variant?.id ?? null
+        live.evolveEnabled = true
+      } catch {
+        // evolve is best-effort — never block session creation
+      }
     }
 
     const tools: Tool[] = [...this.builtinTools, ...(this.mcpReady ? this.mcp.tools() : [])]
@@ -320,6 +405,7 @@ export class SessionRuntime {
         verifiers: verifiers.map((v) => v.name),
         nativeToolCalls: true,
         verbose: false,
+        extra: activeVariantText ?? undefined,
       })
 
     const engine = new Engine({
@@ -328,7 +414,10 @@ export class SessionRuntime {
       permissions: this.buildPermissions(config, live, projectPath, sessionId),
       systemPrompt,
       cwd: projectPath,
-      maxIterations: config.maxIterations ?? 25,
+      // 0 = unbounded (matches the CLI). The engine's loop detection, the abort
+      // button, and the iteration-budget reminder are the real stops; a hard 25
+      // cap was cutting off legitimate from-scratch builds mid-task.
+      maxIterations: config.maxIterations ?? 0,
       enableReActFallback: config.enableReActFallback ?? true,
       tracer: (event) => {
         this.events.append({ session_id: sessionId, t: Date.now(), type: event.type, data: event })
