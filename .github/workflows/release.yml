@@ -46,7 +46,9 @@ jobs:
           - { key: windows-x64,  os: windows-latest,  host_out: omni.exe, built: omni-windows-x64.exe }
           - { key: linux-x64,    os: ubuntu-latest,    host_out: omni,     built: omni-linux-x64 }
           - { key: linux-arm64,  os: ubuntu-24.04-arm, host_out: omni,     built: omni-linux-arm64 }
-          - { key: darwin-x64,   os: macos-13,         host_out: omni,     built: omni-darwin-x64 }
+          # darwin-x64 (Intel Mac) dropped for v0.1.0: GitHub's macos-13 runner is
+          # unavailable (retiring), so this leg sits unassigned and gets cancelled,
+          # which skips the whole publish. Re-add once an Intel-Mac runner is usable.
           - { key: darwin-arm64, os: macos-14,         host_out: omni,     built: omni-darwin-arm64 }
     steps:
       - uses: actions/checkout@v4

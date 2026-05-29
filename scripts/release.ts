@@ -26,7 +26,7 @@ const ASSETS = [
   "omni-windows-x64.exe",
   "omni-linux-x64",
   "omni-linux-arm64",
-  "omni-darwin-x64",
+  // darwin-x64 (Intel Mac) dropped for v0.1.0 — no macos-13 runner available.
   "omni-darwin-arm64",
 ]
 

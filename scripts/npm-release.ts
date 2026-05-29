@@ -45,7 +45,8 @@ const TARGETS = [
   { key: "windows-x64",  built: "omni-windows-x64.exe", os: "win32",  cpu: "x64",   bin: "omni.exe" },
   { key: "linux-x64",    built: "omni-linux-x64",       os: "linux",  cpu: "x64",   bin: "omni" },
   { key: "linux-arm64",  built: "omni-linux-arm64",     os: "linux",  cpu: "arm64", bin: "omni" },
-  { key: "darwin-x64",   built: "omni-darwin-x64",      os: "darwin", cpu: "x64",   bin: "omni" },
+  // darwin-x64 (Intel Mac) dropped for v0.1.0 — GitHub's macos-13 runner is
+  // unavailable (retiring) so the leg can't build; re-add in a later release.
   { key: "darwin-arm64", built: "omni-darwin-arm64",    os: "darwin", cpu: "arm64", bin: "omni" },
 ] as const
 
