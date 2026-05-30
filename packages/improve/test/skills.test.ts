@@ -47,14 +47,19 @@ function fakeFrontmatter(raw: string): { frontmatter: Record<string, unknown>; b
   return { frontmatter: fm, body: m[2] ?? "" }
 }
 
+let prevClaude: string | undefined
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "omni-skills-"))
   delete process.env.OMNI_HOME
+  prevClaude = process.env.OMNI_CLAUDE_SKILLS_DIR
+  process.env.OMNI_CLAUDE_SKILLS_DIR = "" // hermetic: don't read the real ~/.claude/skills
   setFrontmatterParser(fakeFrontmatter)
 })
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true })
   delete process.env.OMNI_HOME
+  if (prevClaude === undefined) delete process.env.OMNI_CLAUDE_SKILLS_DIR
+  else process.env.OMNI_CLAUDE_SKILLS_DIR = prevClaude
 })
 
 const mkSkill = (overrides: Partial<Skill> = {}): Skill => ({
